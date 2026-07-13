@@ -320,6 +320,24 @@
     </div>
   </div>
 
+  <!-- TML 粘贴弹窗 -->
+  <div id="tml-modal" class="fixed inset-0 z-50 hidden">
+    <div class="modal-overlay absolute inset-0" onclick="closeTmlModal()"></div>
+    <div class="absolute inset-4 md:inset-y-6 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[560px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-beige-200">
+        <h3 class="text-sm font-semibold text-coffee">粘贴 TML 排期</h3>
+        <button onclick="closeTmlModal()" class="p-1 text-coffee-light hover:text-coffee rounded hover:bg-beige-100">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-5">
+        <textarea id="tml-input" rows="8" class="w-full text-sm border border-beige-200 rounded-lg p-3 bg-beige-50 text-coffee resize-none font-mono" placeholder="粘贴 TML 排期文本...&#10;&#10;示例：&#10;脚本 7.20&#10;拍摄 7.23-30&#10;ACO 8.13&#10;BCO 8.17&#10;发布 8.18"></textarea>
+        <button onclick="parseTml()" class="mt-3 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark transition-colors">解析</button>
+        <div id="tml-preview" class="mt-4 hidden"></div>
+      </div>
+    </div>
+  </div>
+
   <script>
   const CATEGORIES = ['内容', '广告'];
   const PLATFORMS = ['哔哩哔哩', '抖音', '小红书', '视频号', '微信', '微博'];
@@ -1093,11 +1111,16 @@
       </div>
     </div>`;
 
-    // 发布日期编辑
-    html += `<div class="flex items-center gap-3">
-      <label class="text-xs text-coffee-light">发布日期</label>
-      <input type="date" value="${pubDate}" onchange="updatePublishDate('${topic.id}',this.value)" class="text-sm border border-beige-200 rounded-lg px-3 py-1.5 bg-beige-50 text-coffee">
-      <span class="text-xs text-coffee-light">修改后自动倒排</span>
+    // 发布日期编辑 + TML 粘贴
+    html += `<div class="flex items-center gap-3 flex-wrap">
+      <div class="flex items-center gap-2">
+        <label class="text-xs text-coffee-light">发布日期</label>
+        <input type="date" value="${pubDate}" onchange="updatePublishDate('${topic.id}',this.value)" class="text-sm border border-beige-200 rounded-lg px-3 py-1.5 bg-beige-50 text-coffee">
+      </div>
+      <button onclick="openTmlModal('${topic.id}')" class="text-xs text-brand border border-brand/40 rounded-lg px-3 py-1.5 hover:bg-brand hover:text-white transition-colors flex items-center gap-1">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        粘贴 TML
+      </button>
     </div>`;
 
     // 前置准备
@@ -1936,6 +1959,213 @@
       alert('导出失败: ' + e.message);
     }
     document.body.removeChild(container);
+  }
+
+  // ── TML 粘贴解析 ──
+  let tmlTopicId = null;
+  let tmlParsed = null;
+
+  function openTmlModal(topicId) {
+    tmlTopicId = topicId;
+    document.getElementById('tml-input').value = '';
+    document.getElementById('tml-preview').classList.add('hidden');
+    document.getElementById('tml-preview').innerHTML = '';
+    document.getElementById('tml-modal').classList.remove('hidden');
+    document.getElementById('tml-input').focus();
+  }
+  function closeTmlModal() {
+    document.getElementById('tml-modal').classList.add('hidden');
+    tmlTopicId = null;
+    tmlParsed = null;
+  }
+
+  // 标准工序关键词映射
+  const TML_STEP_MAP = [
+    { keys: ['脚本', 'script'], stepKey: 'script' },
+    { keys: ['拍摄', '拍', 'shoot', '拍摄日'], stepKey: 'shoot' },
+    { keys: ['aco', 'a copy', '粗剪', 'a拷', 'a拷贝', 'a_copy'], stepKey: 'acopy' },
+    { keys: ['bco', 'b copy', '精剪', 'b拷', 'b拷贝', '终剪', 'b_copy'], stepKey: 'bcopy' },
+    { keys: ['发布', 'publish', '发', '上线'], stepKey: 'publish' },
+  ];
+
+  function parseTmlDate(dateStr, currentYear) {
+    // 处理各种日期格式: 7.15, 7/15, 7月15日, 7-15
+    const cleaned = dateStr.replace(/月/g, '.').replace(/日/g, '').replace(/\//g, '.').trim();
+    const parts = cleaned.split('.');
+    if (parts.length < 2) return null;
+    const month = parseInt(parts[0]);
+    const day = parseInt(parts[1]);
+    if (isNaN(month) || isNaN(day) || month < 1 || month > 31 || day < 1 || day > 31) return null;
+    const year = (month < new Date().getMonth() + 1) ? currentYear + 1 : currentYear;
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
+  function parseTmlRange(rangeStr, currentYear) {
+    // 处理日期范围: 7.23-30, 7.14–17, 7.28-8.3
+    const sep = rangeStr.includes('–') ? '–' : '-';
+    const parts = rangeStr.split(sep);
+    if (parts.length !== 2) return null;
+
+    const startPart = parts[0].trim();
+    const endPart = parts[1].trim();
+
+    // 起始日期
+    const startDate = parseTmlDate(startPart, currentYear);
+    if (!startDate) return null;
+
+    // 结束日期：可能是简写（只有日）或完整（月.日）
+    let endDate;
+    if (endPart.includes('.') || endPart.includes('/')) {
+      endDate = parseTmlDate(endPart, currentYear);
+    } else {
+      // 简写：继承起始月份
+      const startParts = startPart.replace(/\//g, '.').split('.');
+      const endDay = parseInt(endPart);
+      if (isNaN(endDay)) return null;
+      const month = parseInt(startParts[0]);
+      const year = (month < new Date().getMonth() + 1) ? currentYear + 1 : currentYear;
+      endDate = `${year}-${String(month).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`;
+    }
+
+    if (!endDate || endDate < startDate) return null;
+    return { start: startDate, end: endDate };
+  }
+
+  function parseTml() {
+    const input = document.getElementById('tml-input').value.trim();
+    if (!input) { alert('请粘贴 TML 文本'); return; }
+
+    const currentYear = new Date().getFullYear();
+    const lines = input.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+    const steps = {};  // stepKey → { startDate, endDate }
+    const notes = {};  // date → [text]
+    const warnings = [];
+    let lastDate = null;
+
+    lines.forEach((line, lineIdx) => {
+      // 跳过纯括号行（追加到上一个日期）
+      const parenMatch = line.match(/^[（(](.+)[）)]$/);
+      if (parenMatch && lastDate) {
+        if (!notes[lastDate]) notes[lastDate] = [];
+        notes[lastDate].push(parenMatch[1]);
+        return;
+      }
+
+      // 尝试匹配: 工序名 + 日期
+      // 正则: 匹配开头的文字部分 + 后面的日期部分
+      const lineMatch = line.match(/^(.+?)\s+(\d{1,2}[\./月][\d]{1,2}(?:\s*[-–~]\s*\d{1,2}(?:[\./月]\d{1,2})?)?)/);
+      if (!lineMatch) {
+        warnings.push(`第${lineIdx + 1}行无法识别: "${line}"`);
+        return;
+      }
+
+      const namePart = lineMatch[1].trim();
+      const datePart = lineMatch[2].trim();
+
+      // 匹配标准工序
+      const nameLower = namePart.toLowerCase();
+      const matched = TML_STEP_MAP.find(m => m.keys.some(k => nameLower.includes(k)));
+
+      // 解析日期
+      const isRange = datePart.includes('-') || datePart.includes('–');
+      let startDate, endDate;
+
+      if (isRange) {
+        const range = parseTmlRange(datePart, currentYear);
+        if (!range) { warnings.push(`第${lineIdx + 1}行日期解析失败: "${datePart}"`); return; }
+        startDate = range.start;
+        endDate = range.end;
+      } else {
+        startDate = parseTmlDate(datePart, currentYear);
+        endDate = startDate;
+        if (!startDate) { warnings.push(`第${lineIdx + 1}行日期解析失败: "${datePart}"`); return; }
+      }
+
+      lastDate = startDate;
+
+      if (matched) {
+        steps[matched.stepKey] = { startDate, endDate, name: namePart };
+      } else {
+        if (!notes[startDate]) notes[startDate] = [];
+        notes[startDate].push(namePart);
+      }
+    });
+
+    // 生成预览
+    tmlParsed = { steps, notes };
+    const preview = document.getElementById('tml-preview');
+    preview.classList.remove('hidden');
+
+    let html = '<div class="space-y-3">';
+
+    if (Object.keys(steps).length) {
+      html += '<div><h5 class="text-xs font-semibold text-coffee mb-1.5">工序</h5><div class="space-y-1">';
+      const defs = getStepDefs();
+      Object.entries(steps).forEach(([key, s]) => {
+        const def = defs.find(d => d.key === key);
+        const color = def ? def.color : '#A3968C';
+        const name = def ? def.name : key;
+        const range = s.startDate === s.endDate ? shortDate(s.startDate) : `${shortDate(s.startDate)} ~ ${shortDate(s.endDate)}`;
+        html += `<div class="flex items-center gap-2 text-sm"><span class="w-3 h-3 rounded" style="background:${color}"></span><span class="text-coffee">${name}</span><span class="text-coffee-light">${range}</span></div>`;
+      });
+      html += '</div></div>';
+    }
+
+    if (Object.keys(notes).length) {
+      html += '<div><h5 class="text-xs font-semibold text-coffee mb-1.5">备注</h5><div class="space-y-1">';
+      Object.entries(notes).sort().forEach(([date, texts]) => {
+        texts.forEach(text => {
+          html += `<div class="flex items-center gap-2 text-sm"><span class="text-coffee-light">${shortDate(date)}</span><span class="text-coffee">${escapeHtml(text)}</span></div>`;
+        });
+      });
+      html += '</div></div>';
+    }
+
+    if (warnings.length) {
+      html += '<div class="text-xs text-coffee-light">';
+      warnings.forEach(w => html += `<div>${escapeHtml(w)}</div>`);
+      html += '</div>';
+    }
+
+    if (!Object.keys(steps).length && !Object.keys(notes).length) {
+      html += '<p class="text-xs text-coffee-light">未识别到有效内容</p>';
+    } else {
+      html += `<div class="pt-2"><button onclick="applyTml()" class="px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark transition-colors">确认应用</button></div>`;
+    }
+
+    html += '</div>';
+    preview.innerHTML = html;
+  }
+
+  function applyTml() {
+    if (!tmlParsed || !tmlTopicId) return;
+    const topic = appState.topics.find(t => t.id === tmlTopicId);
+    if (!topic) return;
+
+    const defs = getStepDefs();
+
+    // 应用工序
+    Object.entries(tmlParsed.steps).forEach(([key, s]) => {
+      const existing = (topic.productionSteps || []).find(step => step.key === key);
+      const def = defs.find(d => d.key === key);
+      if (existing) {
+        existing.startDate = s.startDate;
+        existing.endDate = s.endDate;
+      } else if (def) {
+        topic.productionSteps.push({ key: def.key, name: def.name, startDate: s.startDate, endDate: s.endDate, duration: daysBetween(s.startDate, s.endDate) + 1, color: def.color, done: false });
+      }
+    });
+
+    // 应用备注
+    if (!topic.notes) topic.notes = {};
+    Object.entries(tmlParsed.notes).forEach(([date, texts]) => {
+      const existing = topic.notes[date] || '';
+      const newNotes = texts.join('；');
+      topic.notes[date] = existing ? existing + '；' + newNotes : newNotes;
+    });
+
+    markUpdated(topic); saveData(); closeTmlModal(); renderAll();
   }
 
   // ── 初始化 ──

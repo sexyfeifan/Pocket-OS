@@ -1572,11 +1572,11 @@
             <div class="text-xs ${isToday?'text-brand font-bold':isInRange?'text-coffee':'text-coffee-light'} mb-1">${day}</div>`;
 
           daySteps.forEach(s => {
-            html += `<div class="text-xs mb-0.5" style="line-height:16px;height:16px;overflow:hidden"><span style="display:inline-block;width:3px;height:12px;background:${s.color};vertical-align:middle;margin-right:3px"></span><span style="vertical-align:middle">${s.name}</span></div>`;
+            html += `<div class="text-xs font-semibold mb-0.5 rounded px-1" style="background:${s.color}33;line-height:16px">${s.name}</div>`;
           });
 
           if (hasNote) {
-            html += `<div class="text-xs text-coffee-light truncate" title="${escapeHtml(hasNote)}">${escapeHtml(hasNote).slice(0, 8)}</div>`;
+            html += `<div class="text-xs font-semibold rounded px-1 truncate" style="background:#FFF3CD;color:#7B6B5A" title="${escapeHtml(hasNote)}">${escapeHtml(hasNote).slice(0, 8)}</div>`;
           }
 
           html += '</td>';
@@ -1749,9 +1749,10 @@
             mh += `<td style="padding:${CELL_PAD}px;border:1px solid #F0EDE6;width:${CELL}px;height:${CELL_H}px;vertical-align:top;box-sizing:border-box">`;
             mh += `<div style="font-size:11px;color:#4A3C31;margin-bottom:2px;line-height:14px">${cd}</div>`;
             dsSteps.forEach(s => {
-              mh += `<div class="cal-tag" style="font-size:10px;color:#4A3C31;line-height:1;margin-bottom:1px;padding:2px 0"><span style="display:inline-block;width:3px;height:10px;background:${s.color};vertical-align:middle;margin-right:4px"></span><span style="vertical-align:middle">${s.name}</span></div>`;
+              const bg = s.color + '33';
+              mh += `<div class="cal-tag" style="font-size:10px;font-weight:600;color:#4A3C31;background:${bg};padding:2px 4px;margin-bottom:1px;border-radius:2px;line-height:14px">${s.name}</div>`;
             });
-            if (dsNote) mh += `<div style="font-size:9px;color:#A3968C;line-height:1;margin-top:1px;padding:1px 0">${escapeHtml(dsNote)}</div>`;
+            if (dsNote) mh += `<div style="font-size:9px;font-weight:600;color:#7B6B5A;background:#FFF3CD;padding:2px 4px;margin-bottom:1px;border-radius:2px;line-height:14px">${escapeHtml(dsNote)}</div>`;
             mh += '</td>';
             cd++;
           }

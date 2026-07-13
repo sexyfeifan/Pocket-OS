@@ -322,7 +322,7 @@
 
   <script>
   const CATEGORIES = ['内容', '广告'];
-  const PLATFORMS = ['小红书', '抖音', 'B站', '视频号', 'YouTube'];
+  const PLATFORMS = ['哔哩哔哩', '抖音', '小红书', '视频号', '微信', '微博'];
   const DEFAULT_STEP_DEFS = [
     { key: 'script', name: '脚本', color: '#A3D9A5', offset: 3, duration: 1 },
     { key: 'shoot', name: '拍摄', color: '#A5C8E1', offset: 2, duration: 2 },
@@ -881,7 +881,12 @@
       const ne = addDays(step.endDate, diff);
       if (ne >= step.startDate) { step.endDate = ne; step.duration = daysBetween(step.startDate, step.endDate) + 1; }
     }
-    resizeData.startX = e.clientX; markUpdated(topic); saveData(); renderAll();
+    resizeData.startX = e.clientX; markUpdated(topic); saveData();
+    // 保存滚动位置再渲染
+    const wrapper = document.getElementById('gantt-scroll-wrapper');
+    const savedScroll = wrapper ? wrapper.scrollLeft : 0;
+    renderAll();
+    if (wrapper) wrapper.scrollLeft = savedScroll;
     // 发布工序 resize → 同步 publishDate
     if (step.key === 'publish') { topic.publishDate = step.startDate; saveData(); }
   }
@@ -978,8 +983,10 @@
       const progress = calcProgress(t);
       const conflict = checkConflict(t.productionSteps || []);
       const act = t.id === selectedTopicId;
-      return `<div onclick="selectTopic('${t.id}')" class="topic-item ${act?'active':''} rounded-lg px-3 py-2.5 mb-1 cursor-pointer">
+      const plats = (t.platforms || []).map(p => p.slice(0, 2)).join(' ');
+      return `<div onclick="selectTopic('${t.id}')" class="topic-item ${act?'active':''} rounded-lg px-3 py-2.5 mb-1 cursor-pointer relative">
         <div class="flex items-center justify-between"><span class="text-sm font-medium truncate flex-1 ${act?'':'text-coffee'}">${escapeHtml(t.title)}</span>${conflict.hasConflict?'<svg class="w-4 h-4 text-red-500 flex-shrink-0 ml-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>':''}</div>
+        ${plats ? `<div class="absolute top-1.5 right-2.5 text-xs ${act?'text-white/50':'text-coffee-light/60'}" style="font-size:9px">${plats}</div>` : ''}
         <div class="flex items-center justify-between mt-1.5"><span class="text-xs ${act?'text-white/70':'text-coffee-light'}">${t.category||'内容'} · ${t.publishDate||''}</span><span class="text-xs ${act?'text-white/70':'text-coffee-light'}">${progress}%</span></div>
         <div class="w-full h-1 ${act?'bg-white/30':'bg-beige-200'} rounded-full mt-1.5"><div class="h-1 rounded-full progress-bar ${act?'bg-white':'bg-brand'}" style="width:${progress}%"></div></div>
       </div>`;
@@ -1114,6 +1121,14 @@
       });
     }
     html += `</div></div>`;
+
+    // 发布平台
+    html += `<div>
+      <h4 class="text-xs text-coffee-light mb-2">发布平台</h4>
+      <div class="flex flex-wrap gap-1.5">
+        ${PLATFORMS.map(p => `<button onclick="togglePlatform('${topic.id}','${p}')" class="text-xs px-2 py-1 rounded-full border transition-colors ${(topic.platforms||[]).includes(p)?'bg-brand text-white border-brand':'border-beige-300 text-coffee-light hover:border-brand/50'}">${p}</button>`).join('')}
+      </div>
+    </div>`;
 
     // Canbox 绑定信息
     if (topic.canboxImport || topic.canboxLink) {
@@ -1280,6 +1295,14 @@
     const step = t.productionSteps.find(s => s.key === stepKey);
     if (!step || !confirm(`删除工序「${step.name}」？`)) return;
     t.productionSteps = t.productionSteps.filter(s => s.key !== stepKey);
+    markUpdated(t); saveData(); renderAll();
+  }
+  function togglePlatform(id, platform) {
+    const t = appState.topics.find(t => t.id === id);
+    if (!t) return;
+    if (!t.platforms) t.platforms = [];
+    const idx = t.platforms.indexOf(platform);
+    if (idx >= 0) t.platforms.splice(idx, 1); else t.platforms.push(platform);
     markUpdated(t); saveData(); renderAll();
   }
   function updateStepDate(id, idx, field, value) {

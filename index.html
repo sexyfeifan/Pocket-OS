@@ -182,7 +182,7 @@
         <!-- 项目通告单日历 -->
         <div id="project-calendar-section" class="max-w-2xl mx-auto mt-6">
           <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
               <button onclick="projectCalPrev()" class="p-1 rounded hover:bg-beige-100 transition-colors">
                 <svg class="w-4 h-4 text-coffee-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
               </button>
@@ -190,6 +190,7 @@
               <button onclick="projectCalNext()" class="p-1 rounded hover:bg-beige-100 transition-colors">
                 <svg class="w-4 h-4 text-coffee-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
               </button>
+              <button onclick="projectCalReset()" class="text-xs text-brand border border-brand/40 rounded px-2 py-0.5 hover:bg-brand hover:text-white transition-colors">归位</button>
             </div>
             <button onclick="exportCalendarImage()" class="text-xs text-brand border border-brand rounded-lg px-3 py-1.5 hover:bg-brand hover:text-white transition-colors">导出通告单</button>
           </div>
@@ -896,7 +897,13 @@
     }
     document.getElementById('empty-state').classList.add('hidden');
     if (!selectedTopicId || !appState.topics.find(t => t.id === selectedTopicId)) selectedTopicId = appState.topics[0]?.id;
-    if (currentView === 'calendar') { renderCalendar(); renderTopicSummaries(); }
+    if (currentView === 'calendar') {
+      const wrapper = document.getElementById('gantt-scroll-wrapper');
+      const savedScroll = wrapper ? wrapper.scrollLeft : 0;
+      renderCalendar();
+      renderTopicSummaries();
+      if (wrapper) wrapper.scrollLeft = savedScroll;
+    }
     if (currentView === 'card') renderCardList();
     if (currentView === 'edit') renderEditPage();
   }
@@ -1611,6 +1618,25 @@
   function projectCalNext() {
     projectCalMonth++;
     if (projectCalMonth > 11) { projectCalMonth = 0; projectCalYear++; }
+    renderProjectCalendar();
+  }
+  function projectCalReset() {
+    const topic = appState.topics.find(t => t.id === selectedTopicId);
+    if (!topic) return;
+    // 归位到拍摄月或第一个工序月或发布月
+    let targetDate = null;
+    if (topic.canboxImport?.shootStart) targetDate = topic.canboxImport.shootStart;
+    else if (topic.productionSteps?.length) targetDate = topic.productionSteps[0].startDate;
+    else if (topic.publishDate) targetDate = topic.publishDate;
+    if (targetDate) {
+      const d = new Date(targetDate + 'T00:00:00');
+      projectCalYear = d.getFullYear();
+      projectCalMonth = d.getMonth();
+    } else {
+      const now = new Date();
+      projectCalYear = now.getFullYear();
+      projectCalMonth = now.getMonth();
+    }
     renderProjectCalendar();
   }
 

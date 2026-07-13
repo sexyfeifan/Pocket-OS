@@ -1334,7 +1334,13 @@
     if (!shootStep) { alert('未找到拍摄工序'); return; }
     shootStep.startDate = cb.shootStart;
     shootStep.endDate = cb.shootEnd;
-    markUpdated(t); saveData(); renderAll();
+    shootStep.duration = daysBetween(cb.shootStart, cb.shootEnd) + 1;
+    markUpdated(t); saveData();
+    // 确保所有视图都刷新
+    renderTopicList();
+    renderTopicSummaries();
+    renderProjectCalendar();
+    renderEditPage();
   }
   function togglePlatform(id, platform) {
     const t = appState.topics.find(t => t.id === id);

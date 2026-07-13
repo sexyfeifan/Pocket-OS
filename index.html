@@ -354,13 +354,18 @@
 
   function reverseSchedule(publishDate, stepDefs) {
     const defs = stepDefs || getStepDefs();
-    return defs.map(def => {
-      const offset = def.offset, duration = def.duration;
-      const start = addDays(publishDate, -offset);
-      const dur = Math.max(0, Math.ceil(duration) - 1);
-      const end = duration === 0 ? start : addDays(start, dur);
-      return { key: def.key, name: def.name, startDate: start, endDate: end, duration, color: def.color, done: false };
-    });
+    // 顺序倒排：从发布日往前，每道工序紧挨前一道，不重叠
+    const steps = [];
+    let cursor = publishDate;
+    for (let i = defs.length - 1; i >= 0; i--) {
+      const def = defs[i];
+      const dur = Math.max(0, Math.ceil(def.duration) - 1);
+      const end = cursor;
+      const start = def.duration === 0 ? end : addDays(end, -dur);
+      steps.unshift({ key: def.key, name: def.name, startDate: start, endDate: end, duration: def.duration, color: def.color, done: false });
+      cursor = addDays(start, -1);
+    }
+    return steps;
   }
 
   // 双锚点倒排：以拍摄段 + 发布日为固定锚点，前后工序分别倒推/顺推
@@ -796,7 +801,24 @@
     const step = topic.productionSteps.find(s => s.key === dragData.stepKey);
     if (!step) return;
     const dur = daysBetween(step.startDate, step.endDate);
+    const oldStart = step.startDate;
+    const delta = daysBetween(oldStart, targetDate);
     step.startDate = targetDate; step.endDate = addDays(targetDate, dur);
+
+    // 发布工序拖拽 → 同步 publishDate
+    if (step.key === 'publish') topic.publishDate = targetDate;
+
+    // 级联：下游工序按原间隔跟随
+    const defs = getStepDefs();
+    const stepIdx = defs.findIndex(d => d.key === dragData.stepKey);
+    for (let i = stepIdx + 1; i < defs.length; i++) {
+      const nextStep = topic.productionSteps.find(s => s.key === defs[i].key);
+      if (!nextStep) continue;
+      const nextDur = daysBetween(nextStep.startDate, nextStep.endDate);
+      nextStep.startDate = addDays(nextStep.startDate, delta);
+      nextStep.endDate = addDays(nextStep.startDate, nextDur);
+    }
+
     markUpdated(topic); saveData(); renderAll(); dragData = null;
   }
   let resizeData = null;
@@ -822,6 +844,8 @@
       if (ne >= step.startDate) { step.endDate = ne; step.duration = daysBetween(step.startDate, step.endDate) + 1; }
     }
     resizeData.startX = e.clientX; markUpdated(topic); saveData(); renderAll();
+    // 发布工序 resize → 同步 publishDate
+    if (step.key === 'publish') { topic.publishDate = step.startDate; saveData(); }
   }
   function ganttResizeEnd() { resizeData = null; document.removeEventListener('mousemove', ganttResizeMove); document.removeEventListener('mouseup', ganttResizeEnd); }
 

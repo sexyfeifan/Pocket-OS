@@ -112,7 +112,7 @@
       </button>
       <button onclick="openCanboxImport()" class="w-full py-1.5 text-xs text-coffee-light hover:text-coffee border border-beige-300 rounded-lg hover:bg-beige-200 transition-colors flex items-center justify-center gap-1">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-        从 Canbox 导入
+        从拍摄通告导入
       </button>
       <button onclick="exportData()" class="w-full py-1.5 text-xs text-coffee-light hover:text-coffee border border-beige-300 rounded-lg hover:bg-beige-200 transition-colors flex items-center justify-center gap-1">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
@@ -237,7 +237,7 @@
     <div class="modal-overlay absolute inset-0" onclick="closeCanboxImport()"></div>
     <div class="absolute inset-4 md:inset-y-6 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[700px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
       <div class="flex items-center justify-between px-6 py-4 border-b border-beige-200">
-        <h2 class="text-base font-semibold text-coffee">从 Canbox 导入拍摄排期</h2>
+        <h2 class="text-base font-semibold text-coffee">从拍摄通告导入拍摄排期</h2>
         <button onclick="closeCanboxImport()" class="p-1.5 text-coffee-light hover:text-coffee rounded-lg hover:bg-beige-100">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
@@ -248,7 +248,7 @@
           <h3 class="text-sm font-semibold text-coffee mb-2">连接配置</h3>
           <div class="flex items-center gap-2 mb-2">
             <label class="text-xs text-coffee-light w-16">API 地址</label>
-            <input id="canbox-url" type="text" placeholder="https://your-canbox-server:8443" class="flex-1 text-sm border border-beige-200 rounded-lg px-3 py-1.5 bg-beige-50 text-coffee">
+            <input id="canbox-url" type="text" placeholder="通告排期系统地址" class="flex-1 text-sm border border-beige-200 rounded-lg px-3 py-1.5 bg-beige-50 text-coffee">
           </div>
           <div class="flex items-center gap-2 mb-2">
             <label class="text-xs text-coffee-light w-16">密码</label>
@@ -283,19 +283,15 @@
   const CATEGORIES = ['内容', '广告'];
   const PLATFORMS = ['小红书', '抖音', 'B站', '视频号', 'YouTube'];
   const DEFAULT_STEP_DEFS = [
-    { key: 'outline', name: '大纲', color: '#B8D4E3', offset: 10, duration: 1 },
-    { key: 'script', name: '脚本', color: '#A3D9A5', offset: 9, duration: 1 },
-    { key: 'shoot', name: '拍摄', color: '#A5C8E1', offset: 7, duration: 2 },
-    { key: 'roughcut', name: '粗剪', color: '#F2D98B', offset: 5, duration: 1 },
-    { key: 'acopy', name: 'A Copy', color: '#E8C97A', offset: 4, duration: 1 },
-    { key: 'color', name: '调色', color: '#C8A2E8', offset: 3, duration: 1 },
-    { key: 'bcopy', name: 'B Copy', color: '#D9A5E1', offset: 2, duration: 1 },
-    { key: 'vo', name: 'VO', color: '#E8B8A2', offset: 1, duration: 1 },
+    { key: 'script', name: '脚本', color: '#A3D9A5', offset: 3, duration: 1 },
+    { key: 'shoot', name: '拍摄', color: '#A5C8E1', offset: 2, duration: 2 },
+    { key: 'acopy', name: 'ACO', color: '#F2D98B', offset: 1, duration: 2 },
+    { key: 'bcopy', name: 'BCO', color: '#E8C97A', offset: 0, duration: 2 },
     { key: 'publish', name: '发布', color: '#B37D56', offset: 0, duration: 0 },
   ];
-  const SUMMARY_KEYS = ['outline', 'script', 'shoot', 'roughcut', 'acopy', 'color', 'bcopy', 'vo', 'publish'];
+  const SUMMARY_KEYS = ['script', 'shoot', 'acopy', 'bcopy', 'publish'];
 
-  let appState = { version: '2.0.0', lastModified: null, topics: [], settings: { theme: 'beige-light', stepDefs: JSON.parse(JSON.stringify(DEFAULT_STEP_DEFS)) } };
+  let appState = { version: '1.0.1', lastModified: null, topics: [], settings: { theme: 'beige-light', stepDefs: JSON.parse(JSON.stringify(DEFAULT_STEP_DEFS)) } };
   let currentView = 'calendar';
   let selectedTopicId = null;
   let saveTimer = null;
@@ -789,6 +785,17 @@
         </div>`;
       });
       html += `</div>`;
+      // 通告信息
+      const cb = topic.canboxImport;
+      if (cb) {
+        html += `<div class="text-xs text-coffee-light flex flex-wrap gap-x-3 gap-y-0.5 px-1">`;
+        if (cb.location) html += `<span>📍 ${escapeHtml(cb.location)}</span>`;
+        if (cb.director) html += `<span>🎬 ${escapeHtml(cb.director)}</span>`;
+        if (cb.photographer) html += `<span>📷 ${escapeHtml(cb.photographer)}</span>`;
+        if (cb.laodao) html += `<span class="text-brand">老刀</span>`;
+        if (cb.type) html += `<span>${escapeHtml(cb.type)}</span>`;
+        html += `</div>`;
+      }
       if (conflict.hasConflict) html += `<div class="text-xs text-danger-text bg-danger-bg rounded px-2 py-1.5 border border-danger-border">当前发布日期倒排后有任务落在时间轴开始前；如果尚未完成，需要延后发布日期或压缩流程。</div>`;
       html += '</div>';
       return html;
@@ -962,7 +969,7 @@
       const cb = topic.canboxImport || topic.canboxLink || {};
       html += `<div class="bg-sage-bg rounded-lg p-3 text-xs">
         <div class="flex items-center justify-between mb-1">
-          <span class="font-semibold text-sage-text">📋 Canbox 通告信息</span>
+          <span class="font-semibold text-sage-text">📋 通告信息</span>
           <button onclick="unlinkCanbox('${topic.id}')" class="text-coffee-light hover:text-red-500" title="解除绑定"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
         </div>
         <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-coffee">
@@ -979,7 +986,7 @@
     } else {
       html += `<button onclick="openCanboxLink('${topic.id}')" class="text-xs text-brand border border-brand rounded-lg px-3 py-1.5 hover:bg-brand hover:text-white transition-colors flex items-center gap-1.5">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
-        绑定 Canbox 通告
+        绑定通告
       </button>`;
     }
 
@@ -1057,7 +1064,7 @@
   }
   function unlinkCanbox(id) {
     const t = appState.topics.find(t => t.id === id); if (!t) return;
-    if (!confirm('解除与 Canbox 通告的绑定？')) return;
+    if (!confirm('解除与通告的绑定？')) return;
     delete t.canboxImport; delete t.canboxLink;
     markUpdated(t); saveData(); renderAll();
   }

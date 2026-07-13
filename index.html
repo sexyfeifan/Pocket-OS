@@ -1548,10 +1548,10 @@
     const startPad = (firstDay.getDay() + 6) % 7; // 周一=0
     const totalDays = lastDay.getDate();
 
-    let html = '<table class="w-full border-collapse">';
+    let html = '<table class="w-full border-collapse" style="table-layout:fixed">';
     html += '<thead><tr>';
     ['一', '二', '三', '四', '五', '六', '日'].forEach(d => {
-      html += `<th class="text-xs text-coffee-light font-normal py-2 border-b border-beige-200">${d}</th>`;
+      html += `<th class="text-xs text-coffee-light font-normal py-2 border-b border-beige-200" style="width:14.28%">${d}</th>`;
     });
     html += '</tr></thead><tbody>';
 
@@ -1560,7 +1560,7 @@
       html += '<tr>';
       for (let col = 0; col < 7; col++) {
         if ((row === 0 && col < startPad) || day > totalDays) {
-          html += '<td class="border-b border-beige-100 p-1 align-top" style="height:72px"></td>';
+          html += '<td class="border-b border-beige-100 p-1.5 align-top" style="height:72px"></td>';
         } else {
           const dateStr = `${projectCalYear}-${String(projectCalMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
           const isToday = dateStr === today;
@@ -1568,7 +1568,7 @@
           const hasNote = notes[dateStr];
           const daySteps = steps.filter(s => dateStr >= s.startDate && dateStr <= (s.endDate || s.startDate));
 
-          html += `<td class="border-b border-beige-100 p-1 align-top cursor-pointer hover:bg-beige-50 ${isToday?'bg-brand/5':''}" style="height:72px" onclick="openNoteModal('${topic.id}','${dateStr}')">
+          html += `<td class="border-b border-beige-100 p-1.5 align-top cursor-pointer hover:bg-beige-50 ${isToday?'bg-brand/5':''}" style="height:72px;overflow:hidden" onclick="openNoteModal('${topic.id}','${dateStr}')">
             <div class="text-xs ${isToday?'text-brand font-bold':isInRange?'text-coffee':'text-coffee-light'} mb-1">${day}</div>`;
 
           daySteps.forEach(s => {

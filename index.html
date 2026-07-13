@@ -789,14 +789,15 @@
       const cb = topic.canboxImport;
       if (cb) {
         html += `<div class="text-xs text-coffee-light flex flex-wrap gap-x-3 gap-y-0.5 px-1">`;
-        if (cb.location) html += `<span>📍 ${escapeHtml(cb.location)}</span>`;
-        if (cb.director) html += `<span>🎬 导演 ${escapeHtml(cb.director)}</span>`;
-        if (cb.photographer) html += `<span>📷 摄影 ${escapeHtml(cb.photographer)}</span>`;
-        if (cb.production) html +=(`<span>🛠 制片 ${escapeHtml(cb.production)}</span>`);
-        if (cb.rd) html += `<span>📋 研发 ${escapeHtml(cb.rd)}</span>`;
-        if (cb.business) html += `<span>💼 商务 ${escapeHtml(cb.business)}</span>`;
-        if (cb.audio) html += `<span>🎤 收音 ${escapeHtml(cb.audio)}</span>`;
-        if (cb.laodao) html += `<span class="text-brand">老刀</span>`;
+        if (cb.location) html += `<span><span class="inline-block w-2 h-2 rounded-full bg-[#6BA3BE] mr-1"></span>${escapeHtml(cb.location)}</span>`;
+        if (cb.director) html += `<span><span class="inline-block w-2 h-2 rounded-full bg-[#E8A87C] mr-1"></span>导演 ${escapeHtml(cb.director)}</span>`;
+        if (cb.photographer) html += `<span><span class="inline-block w-2 h-2 rounded-full bg-[#85CDCA] mr-1"></span>摄影 ${escapeHtml(cb.photographer)}</span>`;
+        if (cb.production) html += `<span><span class="inline-block w-2 h-2 rounded-full bg-[#D5A5E1] mr-1"></span>制片 ${escapeHtml(cb.production)}</span>`;
+        if (cb.rd) html += `<span><span class="inline-block w-2 h-2 rounded-full bg-[#A3D9A5] mr-1"></span>研发 ${escapeHtml(cb.rd)}</span>`;
+        if (cb.business) html += `<span><span class="inline-block w-2 h-2 rounded-full bg-[#F2D98B] mr-1"></span>商务 ${escapeHtml(cb.business)}</span>`;
+        if (cb.audio) html += `<span><span class="inline-block w-2 h-2 rounded-full bg-[#E1A5A5] mr-1"></span>收音 ${escapeHtml(cb.audio)}</span>`;
+        if (cb.operational) html += `<span><span class="inline-block w-2 h-2 rounded-full bg-[#B8D4E3] mr-1"></span>运营 ${escapeHtml(cb.operational)}</span>`;
+        if (cb.laodao) html += `<span><span class="inline-block w-2 h-2 rounded-full bg-[#B37D56] mr-1"></span>老刀</span>`;
         if (cb.advertiserNo) html += `<span class="text-coffee-light">${escapeHtml(cb.advertiserNo)}</span>`;
         html += `</div>`;
       }
@@ -976,22 +977,22 @@
           <span class="font-semibold text-sage-text">📋 通告信息</span>
           <button onclick="unlinkCanbox('${topic.id}')" class="text-coffee-light hover:text-red-500" title="解除绑定"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
         </div>
-        <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-coffee">
-          ${cb.location ? `<div>拍摄地: <span class="font-medium">${escapeHtml(cb.location)}</span></div>` : ''}
-          ${cb.type ? `<div>类型: <span class="font-medium">${escapeHtml(cb.type)}</span></div>` : ''}
-          ${cb.startTime ? `<div>开始时间: <span class="font-medium">${escapeHtml(cb.startTime)}</span></div>` : ''}
-          ${cb.status ? `<div>状态: <span class="font-medium">${escapeHtml(cb.status)}</span></div>` : ''}
-          ${cb.shootStart && cb.shootEnd ? `<div>拍摄段: <span class="font-medium">${cb.shootStart} ~ ${cb.shootEnd}</span></div>` : ''}
-          ${cb.director ? `<div>🎬 导演: <span class="font-medium">${escapeHtml(cb.director)}</span></div>` : ''}
-          ${cb.photographer ? `<div>📷 摄影: <span class="font-medium">${escapeHtml(cb.photographer)}</span></div>` : ''}
-          ${cb.production ? `<div>🛠 制片: <span class="font-medium">${escapeHtml(cb.production)}</span></div>` : ''}
-          ${cb.rd ? `<div>📋 研发: <span class="font-medium">${escapeHtml(cb.rd)}</span></div>` : ''}
-          ${cb.business ? `<div>💼 商务: <span class="font-medium">${escapeHtml(cb.business)}</span></div>` : ''}
-          ${cb.audio ? `<div>🎤 收音: <span class="font-medium">${escapeHtml(cb.audio)}</span></div>` : ''}
-          ${cb.operational ? `<div>⚙️ 运营: <span class="font-medium">${escapeHtml(cb.operational)}</span></div>` : ''}
-          ${cb.laodao ? '<div>老刀出镜: <span class="font-medium text-brand">是</span></div>' : ''}
-          ${cb.isAdvertiser ? `<div>广告商单: <span class="font-medium">是</span>${cb.advertiserNo ? ` (${escapeHtml(cb.advertiserNo)})` : ''}</div>` : ''}
-          ${cb.orientations && cb.orientations.length ? `<div>拍摄方向: <span class="font-medium">${cb.orientations.join(', ')}</span></div>` : ''}
+        <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-coffee">
+          ${cb.location ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#6BA3BE] mr-1.5"></span>拍摄地: <span class="font-medium">${escapeHtml(cb.location)}</span></div>` : ''}
+          ${cb.type ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#C8A2E8] mr-1.5"></span>类型: <span class="font-medium">${escapeHtml(cb.type)}</span></div>` : ''}
+          ${cb.startTime ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#A3968C] mr-1.5"></span>开始时间: <span class="font-medium">${escapeHtml(cb.startTime)}</span></div>` : ''}
+          ${cb.status ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#85CDCA] mr-1.5"></span>状态: <span class="font-medium">${escapeHtml(cb.status)}</span></div>` : ''}
+          ${cb.shootStart && cb.shootEnd ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#A5C8E1] mr-1.5"></span>拍摄段: <span class="font-medium">${cb.shootStart} ~ ${cb.shootEnd}</span></div>` : ''}
+          ${cb.director ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#E8A87C] mr-1.5"></span>导演: <span class="font-medium">${escapeHtml(cb.director)}</span></div>` : ''}
+          ${cb.photographer ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#85CDCA] mr-1.5"></span>摄影: <span class="font-medium">${escapeHtml(cb.photographer)}</span></div>` : ''}
+          ${cb.production ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#D5A5E1] mr-1.5"></span>制片: <span class="font-medium">${escapeHtml(cb.production)}</span></div>` : ''}
+          ${cb.rd ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#A3D9A5] mr-1.5"></span>研发: <span class="font-medium">${escapeHtml(cb.rd)}</span></div>` : ''}
+          ${cb.business ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#F2D98B] mr-1.5"></span>商务: <span class="font-medium">${escapeHtml(cb.business)}</span></div>` : ''}
+          ${cb.audio ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#E1A5A5] mr-1.5"></span>收音: <span class="font-medium">${escapeHtml(cb.audio)}</span></div>` : ''}
+          ${cb.operational ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#B8D4E3] mr-1.5"></span>运营: <span class="font-medium">${escapeHtml(cb.operational)}</span></div>` : ''}
+          ${cb.laodao ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#B37D56] mr-1.5"></span>老刀出镜: <span class="font-medium">是</span></div>` : ''}
+          ${cb.isAdvertiser ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#D4A574] mr-1.5"></span>广告商单: <span class="font-medium">是</span>${cb.advertiserNo ? ` (${escapeHtml(cb.advertiserNo)})` : ''}</div>` : ''}
+          ${cb.orientations && cb.orientations.length ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#7EB5C4] mr-1.5"></span>拍摄方向: <span class="font-medium">${cb.orientations.join(', ')}</span></div>` : ''}
         </div>
       </div>`;
     } else {

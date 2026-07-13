@@ -8,10 +8,15 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 const DATA_FILE = path.join(__dirname, 'data', 'schedule_data.json');
 const STARTUP_TIME = new Date().toISOString();
-const BUILD_VERSION = '1.1.1';
+const BUILD_VERSION = '1.1.3';
 
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(__dirname));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use('/index.html', express.static(path.join(__dirname, 'index.html')));
+
+// 显式路由：只暴露必要文件
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.get('/package.json', (req, res) => res.sendFile(path.join(__dirname, 'package.json')));
 
 // 初始化数据目录和文件
 const dataDir = path.dirname(DATA_FILE);
@@ -20,11 +25,10 @@ if (!fs.existsSync(dataDir)) {
 }
 if (!fs.existsSync(DATA_FILE)) {
   const defaultData = {
-    version: '1.0.0',
+    version: BUILD_VERSION,
     lastModified: new Date().toISOString(),
     topics: [],
     settings: {
-      defaultDurations: { script: 1, shoot: 3, edit1: 2, edit2: 1, package: 1, copy: 1, publish: 0 },
       theme: 'beige-light'
     }
   };

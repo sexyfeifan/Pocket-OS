@@ -331,7 +331,7 @@
   ];
   const SUMMARY_KEYS = ['script', 'shoot', 'acopy', 'bcopy', 'publish'];
 
-  let appState = { version: '1.0.1', lastModified: null, topics: [], settings: { theme: 'beige-light', stepDefs: JSON.parse(JSON.stringify(DEFAULT_STEP_DEFS)) } };
+  let appState = { version: '1.1.3', lastModified: null, topics: [], settings: { theme: 'beige-light', stepDefs: JSON.parse(JSON.stringify(DEFAULT_STEP_DEFS)) } };
   let currentView = 'calendar';
   let selectedTopicId = null;
   let saveTimer = null;
@@ -351,14 +351,10 @@
   function nowISO() { return new Date().toISOString(); }
   function shortTime(iso) { if (!iso) return ''; const d = new Date(iso); return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 
-  function reverseSchedule(publishDate, stepDefs, assistantCut) {
+  function reverseSchedule(publishDate, stepDefs) {
     const defs = stepDefs || getStepDefs();
     return defs.map(def => {
-      let offset = def.offset, duration = def.duration;
-      if (assistantCut) {
-        if (def.key === 'edit1') { duration = Math.max(1, duration - 1); offset = Math.max(0, offset - 1); }
-        if (def.key === 'aroll') { duration = Math.max(1, duration - 1); }
-      }
+      const offset = def.offset, duration = def.duration;
       const start = addDays(publishDate, -offset);
       const dur = Math.max(0, Math.ceil(duration) - 1);
       const end = duration === 0 ? start : addDays(start, dur);
@@ -367,10 +363,10 @@
   }
 
   // 双锚点倒排：以拍摄段 + 发布日为固定锚点，前后工序分别倒推/顺推
-  function anchorSchedule(shootStart, shootEnd, publishDate, stepDefs, assistantCut) {
+  function anchorSchedule(shootStart, shootEnd, publishDate, stepDefs) {
     const defs = stepDefs || getStepDefs();
     const shootIdx = defs.findIndex(d => d.key === 'shoot');
-    if (shootIdx < 0) return reverseSchedule(publishDate, defs, assistantCut);
+    if (shootIdx < 0) return reverseSchedule(publishDate, defs);
 
     const steps = [];
 
@@ -378,8 +374,7 @@
     let cursor = shootStart;
     for (let i = shootIdx - 1; i >= 0; i--) {
       const def = defs[i];
-      let dur = def.duration;
-      if (assistantCut && def.key === 'edit1') dur = Math.max(1, dur - 1);
+      const dur = def.duration;
       const end = addDays(cursor, -1);
       const daySpan = Math.max(0, Math.ceil(dur) - 1);
       const start = addDays(end, -daySpan);
@@ -391,11 +386,11 @@
     const shootDef = defs[shootIdx];
     steps.push({ key: shootDef.key, name: shootDef.name, startDate: shootStart, endDate: shootEnd, duration: daysBetween(shootStart, shootEnd) + 1, color: shootDef.color, done: false });
 
-    // 拍摄后的工序：从 shootEnd 次日开始顺推，发布日 = shootEnd + 后续工序总时长
+    // 拍摄后的工序：从 shootEnd 次日开始顺推
     const postDefs = defs.slice(shootIdx + 1);
     let c = shootEnd;
     postDefs.forEach(def => {
-      let dur = def.duration;
+      const dur = def.duration;
       const start = addDays(c, 1);
       const daySpan = Math.max(0, Math.ceil(dur) - 1);
       const end = dur === 0 ? start : addDays(start, daySpan);
@@ -438,7 +433,6 @@
     if (!appState.settings.stepDefs?.length) appState.settings.stepDefs = JSON.parse(JSON.stringify(DEFAULT_STEP_DEFS));
     appState.topics.forEach(t => {
       if (!t.category) t.category = '内容';
-      if (t.assistantCut === undefined) t.assistantCut = false;
       if (!t.createdAt) t.createdAt = appState.lastModified || nowISO();
       if (!t.updatedAt) t.updatedAt = appState.lastModified || nowISO();
     });
@@ -474,7 +468,7 @@
   function createTopic() {
     const topic = {
       id: genId(), title: '新选题', category: '内容', projectType: '自有项目', platforms: [],
-      publishDate: addDays(todayStr(), 14), preparationTasks: [], productionSteps: [], assistantCut: false,
+      publishDate: addDays(todayStr(), 14), preparationTasks: [], productionSteps: [],
       createdAt: nowISO(), updatedAt: nowISO()
     };
     topic.productionSteps = reverseSchedule(topic.publishDate, null, false);
@@ -1118,15 +1112,6 @@
   function closeCategory() { document.getElementById('category-dropdown').classList.add('hidden'); openCategoryTopicId = null; document.removeEventListener('click', closeCategoryOnOutside); }
   function closeCategoryOnOutside(e) { if (!document.getElementById('category-dropdown').contains(e.target)) closeCategory(); }
 
-  function toggleAssistantCut(id) {
-    const t = appState.topics.find(t => t.id === id);
-    if (!t) return;
-    t.assistantCut = !t.assistantCut;
-    const doneMap = {}; (t.productionSteps || []).forEach(s => { doneMap[s.key] = s.done; });
-    t.productionSteps = reverseSchedule(t.publishDate, null, t.assistantCut);
-    t.productionSteps.forEach(s => { if (doneMap[s.key]) s.done = true; });
-    markUpdated(t); saveData(); renderAll();
-  }
   function unlinkCanbox(id) {
     const t = appState.topics.find(t => t.id === id); if (!t) return;
     if (!confirm('解除与通告的绑定？')) return;
@@ -1143,11 +1128,10 @@
     if ((t.productionSteps || []).length) {
       if (confirm('是否重新倒排工序？\n\n一般在初始化时使用，已有排期请谨慎操作。\n取消则仅更新发布日期，不动工序。')) {
         const doneMap = {}; t.productionSteps.forEach(s => { doneMap[s.key] = s.done; });
-        t.productionSteps = reverseSchedule(value, null, t.assistantCut);
-        t.productionSteps.forEach(s => { if (doneMap[s.key]) s.done = true; });
+        t.productionSteps = reverseSchedule(value);
       }
     } else {
-      t.productionSteps = reverseSchedule(value, null, t.assistantCut);
+      t.productionSteps = reverseSchedule(value);
     }
     markUpdated(t); saveData(); renderAll();
   }
@@ -1210,7 +1194,7 @@
     if (!t || !t.publishDate) return;
     if (!confirm('重新倒排将重置所有工序日期，已完成状态保留。继续？')) return;
     const doneMap = {}; (t.productionSteps || []).forEach(s => { doneMap[s.key] = s.done; });
-    t.productionSteps = reverseSchedule(t.publishDate, null, t.assistantCut);
+    t.productionSteps = reverseSchedule(t.publishDate);
     t.productionSteps.forEach(s => { if (doneMap[s.key]) s.done = true; });
     markUpdated(t); saveData(); renderAll();
   }
@@ -1260,14 +1244,13 @@
   function settingsAddStep() { settingsDraft.push({ key: 'step_' + Date.now(), name: '新工序', color: '#B8D4E3', offset: 1, duration: 1 }); renderSettingsList(); }
   function settingsRemoveStep(i) { if (settingsDraft.length <= 1) { alert('至少保留一个工序'); return; } settingsDraft.splice(i, 1); renderSettingsList(); }
   function settingsRestoreDefaults() { if (!confirm('恢复默认工序将覆盖当前设置，继续？')) return; settingsDraft = JSON.parse(JSON.stringify(DEFAULT_STEP_DEFS)); renderSettingsList(); }
-  function settingsMoveStep(i, dir) { const j = i + dir; if (j < 0 || j >= settingsDraft.length) return; [settingsDraft[i], settingsDraft[j]] = [settingsDraft[j], settingsDraft[i]]; renderSettingsList(); }
   function saveSettings() { appState.settings.stepDefs = settingsDraft; saveData(); closeSettings(); renderAll(); }
   function settingsRescheduleAll() {
     if (!confirm('确定要用当前工序设置重新倒排所有选题？')) return;
     appState.topics.forEach(t => {
       if (!t.publishDate) return;
       const doneMap = {}; (t.productionSteps || []).forEach(s => { doneMap[s.key] = s.done; });
-      t.productionSteps = reverseSchedule(t.publishDate, settingsDraft, t.assistantCut);
+      t.productionSteps = reverseSchedule(t.publishDate, settingsDraft);
       t.productionSteps.forEach(s => { if (doneMap[s.key]) s.done = true; });
       markUpdated(t);
     });

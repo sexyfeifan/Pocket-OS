@@ -74,7 +74,7 @@ Pocket OS 支持从 [罐头场通告排期系统](https://github.com/sexyfeifan/
 
 1. 在 Canbox 后台「管理员设置 → API 管理」中启用外部 API
 2. 在 Pocket OS 侧边栏点击「从 Canbox 导入」
-3. 输入 Canbox 地址（如 `https://planb.canbox.cool:8443`）
+3. 输入你的 Canbox 服务地址
 4. 选择要导入的项目，自动以拍摄段倒排全部工序
 
 支持：

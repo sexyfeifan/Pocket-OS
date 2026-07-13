@@ -248,7 +248,7 @@
           <h3 class="text-sm font-semibold text-coffee mb-2">连接配置</h3>
           <div class="flex items-center gap-2 mb-2">
             <label class="text-xs text-coffee-light w-16">API 地址</label>
-            <input id="canbox-url" type="text" placeholder="https://planb.canbox.cool:8443" class="flex-1 text-sm border border-beige-200 rounded-lg px-3 py-1.5 bg-beige-50 text-coffee">
+            <input id="canbox-url" type="text" placeholder="https://your-canbox-server:8443" class="flex-1 text-sm border border-beige-200 rounded-lg px-3 py-1.5 bg-beige-50 text-coffee">
           </div>
           <div class="flex items-center gap-2 mb-2">
             <label class="text-xs text-coffee-light w-16">密码</label>
@@ -1202,7 +1202,7 @@
 
   function openCanboxImport() {
     const cfg = appState.settings?.canbox || {};
-    document.getElementById('canbox-url').value = cfg.url || 'https://planb.canbox.cool:8443';
+    document.getElementById('canbox-url').value = cfg.url || '';
     document.getElementById('canbox-password').value = cfg.password || '';
     document.getElementById('canbox-projects').classList.add('hidden');
     document.getElementById('canbox-status').textContent = '';

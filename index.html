@@ -790,10 +790,14 @@
       if (cb) {
         html += `<div class="text-xs text-coffee-light flex flex-wrap gap-x-3 gap-y-0.5 px-1">`;
         if (cb.location) html += `<span>📍 ${escapeHtml(cb.location)}</span>`;
-        if (cb.director) html += `<span>🎬 ${escapeHtml(cb.director)}</span>`;
-        if (cb.photographer) html += `<span>📷 ${escapeHtml(cb.photographer)}</span>`;
+        if (cb.director) html += `<span>🎬 导演 ${escapeHtml(cb.director)}</span>`;
+        if (cb.photographer) html += `<span>📷 摄影 ${escapeHtml(cb.photographer)}</span>`;
+        if (cb.production) html +=(`<span>🛠 制片 ${escapeHtml(cb.production)}</span>`);
+        if (cb.rd) html += `<span>📋 研发 ${escapeHtml(cb.rd)}</span>`;
+        if (cb.business) html += `<span>💼 商务 ${escapeHtml(cb.business)}</span>`;
+        if (cb.audio) html += `<span>🎤 收音 ${escapeHtml(cb.audio)}</span>`;
         if (cb.laodao) html += `<span class="text-brand">老刀</span>`;
-        if (cb.type) html += `<span>${escapeHtml(cb.type)}</span>`;
+        if (cb.advertiserNo) html += `<span class="text-coffee-light">${escapeHtml(cb.advertiserNo)}</span>`;
         html += `</div>`;
       }
       if (conflict.hasConflict) html += `<div class="text-xs text-danger-text bg-danger-bg rounded px-2 py-1.5 border border-danger-border">当前发布日期倒排后有任务落在时间轴开始前；如果尚未完成，需要延后发布日期或压缩流程。</div>`;
@@ -975,12 +979,19 @@
         <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-coffee">
           ${cb.location ? `<div>拍摄地: <span class="font-medium">${escapeHtml(cb.location)}</span></div>` : ''}
           ${cb.type ? `<div>类型: <span class="font-medium">${escapeHtml(cb.type)}</span></div>` : ''}
-          ${cb.laodao ? '<div>老刀出镜: <span class="font-medium">是</span></div>' : ''}
-          ${cb.director ? `<div>导演: <span class="font-medium">${escapeHtml(cb.director)}</span></div>` : ''}
-          ${cb.photographer ? `<div>摄影: <span class="font-medium">${escapeHtml(cb.photographer)}</span></div>` : ''}
           ${cb.startTime ? `<div>开始时间: <span class="font-medium">${escapeHtml(cb.startTime)}</span></div>` : ''}
           ${cb.status ? `<div>状态: <span class="font-medium">${escapeHtml(cb.status)}</span></div>` : ''}
           ${cb.shootStart && cb.shootEnd ? `<div>拍摄段: <span class="font-medium">${cb.shootStart} ~ ${cb.shootEnd}</span></div>` : ''}
+          ${cb.director ? `<div>🎬 导演: <span class="font-medium">${escapeHtml(cb.director)}</span></div>` : ''}
+          ${cb.photographer ? `<div>📷 摄影: <span class="font-medium">${escapeHtml(cb.photographer)}</span></div>` : ''}
+          ${cb.production ? `<div>🛠 制片: <span class="font-medium">${escapeHtml(cb.production)}</span></div>` : ''}
+          ${cb.rd ? `<div>📋 研发: <span class="font-medium">${escapeHtml(cb.rd)}</span></div>` : ''}
+          ${cb.business ? `<div>💼 商务: <span class="font-medium">${escapeHtml(cb.business)}</span></div>` : ''}
+          ${cb.audio ? `<div>🎤 收音: <span class="font-medium">${escapeHtml(cb.audio)}</span></div>` : ''}
+          ${cb.operational ? `<div>⚙️ 运营: <span class="font-medium">${escapeHtml(cb.operational)}</span></div>` : ''}
+          ${cb.laodao ? '<div>老刀出镜: <span class="font-medium text-brand">是</span></div>' : ''}
+          ${cb.isAdvertiser ? `<div>广告商单: <span class="font-medium">是</span>${cb.advertiserNo ? ` (${escapeHtml(cb.advertiserNo)})` : ''}</div>` : ''}
+          ${cb.orientations && cb.orientations.length ? `<div>拍摄方向: <span class="font-medium">${cb.orientations.join(', ')}</span></div>` : ''}
         </div>
       </div>`;
     } else {
@@ -1251,13 +1262,21 @@
             const name = item.name || item.title || '未命名';
             const key = name + '|' + (item.type || '');
             if (!projectMap[key]) {
-              projectMap[key] = { name, type: item.type || '', location: item.location || '', status: item.status || '', laodao: item.laodao || false, platforms: item.platforms || [], dates: [], items: [], director: item.director || '', photographer: item.photographer || '', startTime: item.startTime || '', isAdvertiser: item.isAdvertiser || false };
+              projectMap[key] = { name, type: item.type || '', location: item.location || '', status: item.status || '', laodao: item.laodao || false, platforms: item.platforms || [], orientations: item.orientations || [], dates: [], items: [], director: item.director || '', photographer: item.photographer || '', production: item.production || '', rd: item.rd || '', operational: item.operational || '', audio: item.audio || '', business: item.business || '', startTime: item.startTime || '', isAdvertiser: item.isAdvertiser || false, advertiserNo: item.advertiserNo || '' };
             }
             projectMap[key].dates.push(date);
             projectMap[key].items.push({ ...item, date });
             if (item.status === '已确认') projectMap[key].status = '已确认';
-            if (item.director && !projectMap[key].director) projectMap[key].director = item.director;
-            if (item.photographer && !projectMap[key].photographer) projectMap[key].photographer = item.photographer;
+            // 合并各职位人员（去重）
+            ['director','photographer','production','rd','operational','audio','business'].forEach(role => {
+              if (item[role]) {
+                const existing = projectMap[key][role];
+                const newNames = item[role].split(/[,，、\s]+/).filter(n => n && !existing.includes(n));
+                if (newNames.length) projectMap[key][role] = existing ? existing + ', ' + newNames.join(', ') : newNames.join(', ');
+              }
+            });
+            if (item.advertiserNo && !projectMap[key].advertiserNo) projectMap[key].advertiserNo = item.advertiserNo;
+            if (item.orientations && item.orientations.length) projectMap[key].orientations = item.orientations;
           });
         });
       }
@@ -1377,7 +1396,7 @@
         projectType: '商业项目', platforms: Array.isArray(platforms) ? platforms : [],
         publishDate, preparationTasks: [], productionSteps,
         createdAt: nowISO(), updatedAt: nowISO(),
-        canboxImport: { source: 'canbox', shootStart, shootEnd, dates: p.dates, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, startTime: p.startTime, status: p.status, isAdvertiser: p.isAdvertiser }
+        canboxImport: { source: 'canbox', shootStart, shootEnd, dates: p.dates, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, startTime: p.startTime, status: p.status, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations }
       };
       appState.topics.push(topic);
       imported++;
@@ -1412,7 +1431,7 @@
     t.productionSteps.forEach(s => { if (doneMap[s.key]) s.done = true; });
     t.publishDate = publishDate;
 
-    t.canboxImport = { source: 'canbox', shootStart, shootEnd, dates: p.dates, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, startTime: p.startTime, status: p.status, isAdvertiser: p.isAdvertiser };
+    t.canboxImport = { source: 'canbox', shootStart, shootEnd, dates: p.dates, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, startTime: p.startTime, status: p.status, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations };
     markUpdated(t); saveData(); closeCanboxImport(); renderAll();
   }
 

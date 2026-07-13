@@ -1,0 +1,13 @@
+{
+  "name": "pocket-os",
+  "version": "1.0.0",
+  "description": "智能自媒体操作系统 — 面向J型创作者的内容全生命周期管理",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

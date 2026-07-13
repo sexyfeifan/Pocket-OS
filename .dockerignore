@@ -1,0 +1,6 @@
+node_modules
+data/*.json
+.claude
+.git
+.DS_Store
+*.md

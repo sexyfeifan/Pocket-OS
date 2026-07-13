@@ -1033,8 +1033,6 @@
         <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-coffee">
           ${cb.location ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#6BA3BE] mr-1.5"></span>拍摄地: <span class="font-medium">${escapeHtml(cb.location)}</span></div>` : ''}
           ${cb.type ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#C8A2E8] mr-1.5"></span>类型: <span class="font-medium">${escapeHtml(cb.type)}</span></div>` : ''}
-          ${cb.startTime ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#A3968C] mr-1.5"></span>开始时间: <span class="font-medium">${escapeHtml(cb.startTime)}</span></div>` : ''}
-          ${cb.status ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#85CDCA] mr-1.5"></span>状态: <span class="font-medium">${escapeHtml(cb.status)}</span></div>` : ''}
           ${cb.shootStart && cb.shootEnd ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#A5C8E1] mr-1.5"></span>拍摄段: <span class="font-medium">${cb.shootStart} ~ ${cb.shootEnd}</span></div>` : ''}
           ${cb.director ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#E8A87C] mr-1.5"></span>导演: <span class="font-medium">${escapeHtml(cb.director)}</span></div>` : ''}
           ${cb.photographer ? `<div><span class="inline-block w-2 h-2 rounded-full bg-[#85CDCA] mr-1.5"></span>摄影: <span class="font-medium">${escapeHtml(cb.photographer)}</span></div>` : ''}
@@ -1142,9 +1140,15 @@
   function updatePublishDate(id, value) {
     const t = appState.topics.find(t => t.id === id); if (!t) return;
     t.publishDate = value;
-    const doneMap = {}; (t.productionSteps || []).forEach(s => { doneMap[s.key] = s.done; });
-    t.productionSteps = reverseSchedule(value, null, t.assistantCut);
-    t.productionSteps.forEach(s => { if (doneMap[s.key]) s.done = true; });
+    if ((t.productionSteps || []).length) {
+      if (confirm('是否重新倒排工序？\n\n一般在初始化时使用，已有排期请谨慎操作。\n取消则仅更新发布日期，不动工序。')) {
+        const doneMap = {}; t.productionSteps.forEach(s => { doneMap[s.key] = s.done; });
+        t.productionSteps = reverseSchedule(value, null, t.assistantCut);
+        t.productionSteps.forEach(s => { if (doneMap[s.key]) s.done = true; });
+      }
+    } else {
+      t.productionSteps = reverseSchedule(value, null, t.assistantCut);
+    }
     markUpdated(t); saveData(); renderAll();
   }
   function addPrepFromInput(id) {
@@ -1318,11 +1322,10 @@
             const name = item.name || item.title || '未命名';
             const key = name + '|' + (item.type || '');
             if (!projectMap[key]) {
-              projectMap[key] = { name, type: item.type || '', location: item.location || '', status: item.status || '', laodao: item.laodao || false, platforms: item.platforms || [], orientations: item.orientations || [], dates: [], items: [], director: item.director || '', photographer: item.photographer || '', production: item.production || '', rd: item.rd || '', operational: item.operational || '', audio: item.audio || '', business: item.business || '', startTime: item.startTime || '', isAdvertiser: item.isAdvertiser || false, advertiserNo: item.advertiserNo || '' };
+              projectMap[key] = { name, type: item.type || '', location: item.location || '', laodao: item.laodao || false, platforms: item.platforms || [], orientations: item.orientations || [], dates: [], items: [], director: item.director || '', photographer: item.photographer || '', production: item.production || '', rd: item.rd || '', operational: item.operational || '', audio: item.audio || '', business: item.business || '', isAdvertiser: item.isAdvertiser || false, advertiserNo: item.advertiserNo || '' };
             }
             projectMap[key].dates.push(date);
             projectMap[key].items.push({ ...item, date });
-            if (item.status === '已确认') projectMap[key].status = '已确认';
             // 合并各职位人员（去重）
             ['director','photographer','production','rd','operational','audio','business'].forEach(role => {
               if (item[role]) {
@@ -1392,7 +1395,6 @@
             <div class="flex items-center gap-2 mt-0.5 flex-wrap">
               <span class="text-xs text-coffee-light">📅 ${p.dateRange}${p.dayCount > 1 ? ` (${p.dayCount}天)` : ''}</span>
               ${p.type ? `<span class="text-xs px-1.5 py-0.5 rounded bg-sage-bg text-sage-text">${escapeHtml(p.type)}</span>` : ''}
-              ${p.status === '已确认' ? '<span class="text-xs text-green-600">已确认</span>' : p.status ? `<span class="text-xs text-coffee-light">${escapeHtml(p.status)}</span>` : ''}
               ${p.location ? `<span class="text-xs text-coffee-light">📍 ${escapeHtml(p.location)}</span>` : ''}
               ${p.laodao ? '<span class="text-xs text-brand">老刀</span>' : ''}
               ${p.director ? `<span class="text-xs text-coffee-light">🎬 ${escapeHtml(p.director)}</span>` : ''}
@@ -1452,7 +1454,7 @@
         projectType: '商业项目', platforms: Array.isArray(platforms) ? platforms : [],
         publishDate, preparationTasks: [], productionSteps,
         createdAt: nowISO(), updatedAt: nowISO(),
-        canboxImport: { source: 'canbox', shootStart, shootEnd, dates: p.dates, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, startTime: p.startTime, status: p.status, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations }
+        canboxImport: { source: 'canbox', shootStart, shootEnd, dates: p.dates, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations }
       };
       appState.topics.push(topic);
       imported++;
@@ -1487,7 +1489,7 @@
     t.productionSteps.forEach(s => { if (doneMap[s.key]) s.done = true; });
     t.publishDate = publishDate;
 
-    t.canboxImport = { source: 'canbox', shootStart, shootEnd, dates: p.dates, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, startTime: p.startTime, status: p.status, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations };
+    t.canboxImport = { source: 'canbox', shootStart, shootEnd, dates: p.dates, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations };
     markUpdated(t); saveData(); closeCanboxImport(); renderAll();
   }
 
@@ -1570,7 +1572,7 @@
             <div class="text-xs ${isToday?'text-brand font-bold':isInRange?'text-coffee':'text-coffee-light'} mb-1">${day}</div>`;
 
           daySteps.forEach(s => {
-            html += `<div class="text-xs mb-0.5 pl-1" style="border-left:3px solid ${s.color}">${s.name}</div>`;
+            html += `<div class="text-xs mb-0.5" style="line-height:16px;height:16px;overflow:hidden"><span style="display:inline-block;width:3px;height:12px;background:${s.color};vertical-align:middle;margin-right:3px"></span><span style="vertical-align:middle">${s.name}</span></div>`;
           });
 
           if (hasNote) {
@@ -1670,20 +1672,18 @@
 
     // ── 通告信息（flex 对齐）──
     const infoItems = [];
-    if (cb.location) infoItems.push(['#6BA3BE', '拍摄地', cb.location]);
-    if (cb.type) infoItems.push(['#C8A2E8', '类型', cb.type]);
-    if (cb.startTime) infoItems.push(['#A3968C', '开始时间', cb.startTime]);
-    if (cb.status) infoItems.push(['#85CDCA', '状态', cb.status]);
-    if (cb.director) infoItems.push(['#E8A87C', '导演', cb.director]);
-    if (cb.photographer) infoItems.push(['#85CDCA', '摄影', cb.photographer]);
-    if (cb.production) infoItems.push(['#D5A5E1', '制片', cb.production]);
-    if (cb.rd) infoItems.push(['#A3D9A5', '研发', cb.rd]);
-    if (cb.business) infoItems.push(['#F2D98B', '商务', cb.business]);
-    if (cb.audio) infoItems.push(['#E1A5A5', '收音', cb.audio]);
-    if (cb.operational) infoItems.push(['#B8D4E3', '运营', cb.operational]);
-    if (cb.laodao) infoItems.push(['#B37D56', '老刀出镜', '是']);
-    if (cb.advertiserNo) infoItems.push(['#D4A574', '广告商单', cb.advertiserNo]);
-    if (cb.shootStart && cb.shootEnd) infoItems.push(['#A5C8E1', '拍摄段', `${cb.shootStart} ~ ${cb.shootEnd}`]);
+    if (cb.location) infoItems.push(['拍摄地', cb.location]);
+    if (cb.type) infoItems.push(['类型', cb.type]);
+    if (cb.director) infoItems.push(['导演', cb.director]);
+    if (cb.photographer) infoItems.push(['摄影', cb.photographer]);
+    if (cb.production) infoItems.push(['制片', cb.production]);
+    if (cb.rd) infoItems.push(['研发', cb.rd]);
+    if (cb.business) infoItems.push(['商务', cb.business]);
+    if (cb.audio) infoItems.push(['收音', cb.audio]);
+    if (cb.operational) infoItems.push(['运营', cb.operational]);
+    if (cb.laodao) infoItems.push(['老刀出镜', '是']);
+    if (cb.advertiserNo) infoItems.push(['广告商单', cb.advertiserNo]);
+    if (cb.shootStart && cb.shootEnd) infoItems.push(['拍摄段', `${cb.shootStart} ~ ${cb.shootEnd}`]);
 
     if (infoItems.length) {
       const half = Math.ceil(infoItems.length / 2);
@@ -1692,9 +1692,9 @@
         const left = infoItems[i];
         const right = infoItems[i + half];
         html += `<div style="display:flex">`;
-        html += `<div style="width:50%;display:flex"><span style="color:#A3968C;width:60px;flex-shrink:0">${left[1]}</span><span style="font-weight:500">${escapeHtml(left[2])}</span></div>`;
+        html += `<div style="width:50%;display:flex"><span style="color:#A3968C;width:60px;flex-shrink:0">${left[0]}</span><span style="font-weight:500">${escapeHtml(left[1])}</span></div>`;
         if (right) {
-          html += `<div style="width:50%;display:flex"><span style="color:#A3968C;width:60px;flex-shrink:0">${right[1]}</span><span style="font-weight:500">${escapeHtml(right[2])}</span></div>`;
+          html += `<div style="width:50%;display:flex"><span style="color:#A3968C;width:60px;flex-shrink:0">${right[0]}</span><span style="font-weight:500">${escapeHtml(right[1])}</span></div>`;
         }
         html += `</div>`;
       }
@@ -1721,7 +1721,8 @@
     let curMonth = startDate.getMonth();
     let curYear = startDate.getFullYear();
     const CELL = 100;
-    const CELL_PAD = 4;
+    const CELL_H = 64;
+    const CELL_PAD = 5;
 
     while (curYear < endDate.getFullYear() || (curYear === endDate.getFullYear() && curMonth <= endDate.getMonth())) {
       const monthDiv = document.createElement('div');
@@ -1740,15 +1741,17 @@
         mh += '<tr>';
         for (let c = 0; c < 7; c++) {
           if ((r === 0 && c < pad) || cd > last.getDate()) {
-            mh += `<td style="padding:${CELL_PAD}px;border:1px solid #F0EDE6;width:${CELL}px;vertical-align:top;box-sizing:border-box"></td>`;
+            mh += `<td style="padding:${CELL_PAD}px;border:1px solid #F0EDE6;width:${CELL}px;height:${CELL_H}px;vertical-align:top;box-sizing:border-box"></td>`;
           } else {
             const ds = `${curYear}-${String(curMonth+1).padStart(2,'0')}-${String(cd).padStart(2,'0')}`;
             const dsSteps = steps.filter(s => ds >= s.startDate && ds <= (s.endDate || s.startDate));
             const dsNote = notes[ds];
-            mh += `<td style="padding:${CELL_PAD}px;border:1px solid #F0EDE6;width:${CELL}px;vertical-align:top;box-sizing:border-box">`;
-            mh += `<div style="font-size:11px;color:#4A3C31;margin-bottom:3px">${cd}</div>`;
-            dsSteps.forEach(s => mh += `<div style="font-size:10px;padding:2px 0 2px 5px;margin-bottom:2px;border-left:3px solid ${s.color};line-height:14px;color:#4A3C31">${s.name}</div>`);
-            if (dsNote) mh += `<div style="font-size:10px;color:#A3968C;line-height:14px;margin-top:2px;padding-left:5px">${escapeHtml(dsNote)}</div>`;
+            mh += `<td style="padding:${CELL_PAD}px;border:1px solid #F0EDE6;width:${CELL}px;height:${CELL_H}px;vertical-align:top;box-sizing:border-box;overflow:hidden">`;
+            mh += `<div style="font-size:11px;color:#4A3C31;margin-bottom:2px;line-height:14px">${cd}</div>`;
+            dsSteps.forEach(s => {
+              mh += `<div style="font-size:10px;color:#4A3C31;line-height:16px;height:16px;margin-bottom:1px;overflow:hidden"><span style="display:inline-block;width:3px;height:12px;background:${s.color};vertical-align:middle;margin-right:4px"></span><span style="vertical-align:middle">${s.name}</span></div>`;
+            });
+            if (dsNote) mh += `<div style="font-size:9px;color:#A3968C;line-height:14px;margin-top:1px;overflow:hidden">${escapeHtml(dsNote)}</div>`;
             mh += '</td>';
             cd++;
           }

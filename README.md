@@ -16,14 +16,26 @@
 
 ### Docker Compose（推荐）
 
+创建 `docker-compose.yml`：
+
+```yaml
+services:
+  pocket-os:
+    image: sexyfeifan/pocket-os:latest
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - pocket-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  pocket-data:
+```
+
+启动：
+
 ```bash
-# 创建工作目录
-mkdir pocket-os && cd pocket-os
-
-# 下载 docker-compose.yml
-curl -O https://raw.githubusercontent.com/sexyfeifan/Pocket-OS/main/docker-compose.yml
-
-# 启动
 docker compose up -d
 
 # 打开 http://localhost:8080

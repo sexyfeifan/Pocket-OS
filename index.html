@@ -1162,8 +1162,13 @@
     }
 
     // 制作流程
+    const cb = topic.canboxImport || {};
+    const hasShootDates = cb.shootStart && cb.shootEnd;
     html += `<div>
-      <h4 class="text-xs text-coffee-light mb-2">制作流程 · 自动倒排</h4>
+      <div class="flex items-center justify-between mb-2">
+        <h4 class="text-xs text-coffee-light">制作流程 · 自动倒排</h4>
+        ${hasShootDates ? `<button onclick="importShootDates('${topic.id}')" class="text-xs text-brand border border-brand/40 rounded px-2 py-0.5 hover:bg-brand hover:text-white transition-colors">引入拍摄段时间</button>` : ''}
+      </div>
       <div class="space-y-1">`;
 
     steps.forEach((step, idx) => {
@@ -1295,6 +1300,17 @@
     const step = t.productionSteps.find(s => s.key === stepKey);
     if (!step || !confirm(`删除工序「${step.name}」？`)) return;
     t.productionSteps = t.productionSteps.filter(s => s.key !== stepKey);
+    markUpdated(t); saveData(); renderAll();
+  }
+  function importShootDates(id) {
+    const t = appState.topics.find(t => t.id === id);
+    if (!t || !t.canboxImport) return;
+    const cb = t.canboxImport;
+    if (!cb.shootStart || !cb.shootEnd) return;
+    const shootStep = (t.productionSteps || []).find(s => s.key === 'shoot');
+    if (!shootStep) { alert('未找到拍摄工序'); return; }
+    shootStep.startDate = cb.shootStart;
+    shootStep.endDate = cb.shootEnd;
     markUpdated(t); saveData(); renderAll();
   }
   function togglePlatform(id, platform) {

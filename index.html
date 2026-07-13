@@ -1668,43 +1668,30 @@
     }
     html += `</div>`;
 
-    // ── 通告信息（表格对齐）──
-    const infoRows = [];
-    if (cb.location) infoRows.push(['#6BA3BE', '拍摄地', cb.location]);
-    if (cb.type) infoRows.push(['#C8A2E8', '类型', cb.type]);
-    if (cb.startTime) infoRows.push(['#A3968C', '开始时间', cb.startTime]);
-    if (cb.status) infoRows.push(['#85CDCA', '状态', cb.status]);
-    if (cb.director) infoRows.push(['#E8A87C', '导演', cb.director]);
-    if (cb.photographer) infoRows.push(['#85CDCA', '摄影', cb.photographer]);
-    if (cb.production) infoRows.push(['#D5A5E1', '制片', cb.production]);
-    if (cb.rd) infoRows.push(['#A3D9A5', '研发', cb.rd]);
-    if (cb.business) infoRows.push(['#F2D98B', '商务', cb.business]);
-    if (cb.audio) infoRows.push(['#E1A5A5', '收音', cb.audio]);
-    if (cb.operational) infoRows.push(['#B8D4E3', '运营', cb.operational]);
-    if (cb.laodao) infoRows.push(['#B37D56', '老刀出镜', '是']);
-    if (cb.advertiserNo) infoRows.push(['#D4A574', '广告商单', cb.advertiserNo]);
-    if (cb.shootStart && cb.shootEnd) infoRows.push(['#A5C8E1', '拍摄段', `${cb.shootStart} ~ ${cb.shootEnd}`]);
+    // ── 通告信息（flex 对齐）──
+    const infoItems = [];
+    if (cb.location) infoItems.push(['#6BA3BE', '拍摄地', cb.location]);
+    if (cb.type) infoItems.push(['#C8A2E8', '类型', cb.type]);
+    if (cb.startTime) infoItems.push(['#A3968C', '开始时间', cb.startTime]);
+    if (cb.status) infoItems.push(['#85CDCA', '状态', cb.status]);
+    if (cb.director) infoItems.push(['#E8A87C', '导演', cb.director]);
+    if (cb.photographer) infoItems.push(['#85CDCA', '摄影', cb.photographer]);
+    if (cb.production) infoItems.push(['#D5A5E1', '制片', cb.production]);
+    if (cb.rd) infoItems.push(['#A3D9A5', '研发', cb.rd]);
+    if (cb.business) infoItems.push(['#F2D98B', '商务', cb.business]);
+    if (cb.audio) infoItems.push(['#E1A5A5', '收音', cb.audio]);
+    if (cb.operational) infoItems.push(['#B8D4E3', '运营', cb.operational]);
+    if (cb.laodao) infoItems.push(['#B37D56', '老刀出镜', '是']);
+    if (cb.advertiserNo) infoItems.push(['#D4A574', '广告商单', cb.advertiserNo]);
+    if (cb.shootStart && cb.shootEnd) infoItems.push(['#A5C8E1', '拍摄段', `${cb.shootStart} ~ ${cb.shootEnd}`]);
 
-    if (infoRows.length) {
-      const half = Math.ceil(infoRows.length / 2);
-      html += `<table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px">`;
-      for (let i = 0; i < half; i++) {
-        html += `<tr>`;
-        const left = infoRows[i];
-        const right = infoRows[i + half];
-        html += `<td style="padding:3px 0;width:8px;vertical-align:middle"><div style="width:8px;height:8px;border-radius:50%;background:${left[0]}"></div></td>`;
-        html += `<td style="padding:3px 4px;vertical-align:middle;color:#A3968C;width:60px">${left[1]}</td>`;
-        html += `<td style="padding:3px 16px 3px 0;vertical-align:middle;font-weight:500">${escapeHtml(left[2])}</td>`;
-        if (right) {
-          html += `<td style="padding:3px 0;width:8px;vertical-align:middle"><div style="width:8px;height:8px;border-radius:50%;background:${right[0]}"></div></td>`;
-          html += `<td style="padding:3px 4px;vertical-align:middle;color:#A3968C;width:60px">${right[1]}</td>`;
-          html += `<td style="padding:3px 0;vertical-align:middle;font-weight:500">${escapeHtml(right[2])}</td>`;
-        } else {
-          html += `<td></td><td></td><td></td>`;
-        }
-        html += `</tr>`;
-      }
-      html += `</table>`;
+    if (infoItems.length) {
+      const half = Math.ceil(infoItems.length / 2);
+      html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;margin-bottom:16px;font-size:13px">`;
+      infoItems.forEach(([color, label, value]) => {
+        html += `<div style="display:flex;align-items:center;gap:6px;line-height:18px"><div style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0"></div><span style="color:#A3968C;flex-shrink:0;width:56px">${label}</span><span style="font-weight:500">${escapeHtml(value)}</span></div>`;
+      });
+      html += `</div>`;
     }
 
     // ── 工序时间轴 ──
@@ -1718,16 +1705,6 @@
     // ── 日历网格容器 ──
     html += `<div id="export-cal-grid"></div>`;
 
-    // ── 备注列表 ──
-    const noteEntries = Object.entries(notes).sort();
-    if (noteEntries.length) {
-      html += `<div style="margin-top:16px;font-size:12px"><div style="font-weight:600;margin-bottom:6px">备注</div>`;
-      noteEntries.forEach(([d, text]) => {
-        html += `<div style="margin-bottom:3px"><span style="color:#A3968C;display:inline-block;width:80px">${d}</span>${escapeHtml(text)}</div>`;
-      });
-      html += `</div>`;
-    }
-
     container.innerHTML = html;
 
     // ── 生成多月日历（固定单元格大小）──
@@ -1736,8 +1713,8 @@
     const endDate = new Date(maxDate + 'T00:00:00');
     let curMonth = startDate.getMonth();
     let curYear = startDate.getFullYear();
-    const CELL = 96;
-    const CELL_H = 56;
+    const CELL = 100;
+    const CELL_H = 68;
 
     while (curYear < endDate.getFullYear() || (curYear === endDate.getFullYear() && curMonth <= endDate.getMonth())) {
       const monthDiv = document.createElement('div');
@@ -1761,10 +1738,10 @@
             const ds = `${curYear}-${String(curMonth+1).padStart(2,'0')}-${String(cd).padStart(2,'0')}`;
             const dsSteps = steps.filter(s => ds >= s.startDate && ds <= (s.endDate || s.startDate));
             const dsNote = notes[ds];
-            mh += `<td style="padding:3px;border:1px solid #F0EDE6;width:${CELL}px;height:${CELL_H}px;vertical-align:top;box-sizing:border-box;overflow:hidden">`;
+            mh += `<td style="padding:3px;border:1px solid #F0EDE6;width:${CELL}px;height:${CELL_H}px;vertical-align:top;box-sizing:border-box;overflow:visible">`;
             mh += `<div style="font-size:11px;color:#4A3C31;margin-bottom:2px">${cd}</div>`;
-            dsSteps.forEach(s => mh += `<div style="font-size:9px;color:white;background:${s.color};border-radius:2px;padding:1px 3px;margin-bottom:1px;overflow:hidden;white-space:nowrap">${s.name}</div>`);
-            if (dsNote) mh += `<div style="font-size:9px;color:#A3968C;overflow:hidden;white-space:nowrap">${escapeHtml(dsNote)}</div>`;
+            dsSteps.forEach(s => mh += `<div style="font-size:10px;color:white;background:${s.color};border-radius:2px;padding:1px 4px;margin-bottom:1px;white-space:nowrap;line-height:16px">${s.name}</div>`);
+            if (dsNote) mh += `<div style="font-size:10px;color:#A3968C;line-height:14px;word-break:break-all">${escapeHtml(dsNote)}</div>`;
             mh += '</td>';
             cd++;
           }

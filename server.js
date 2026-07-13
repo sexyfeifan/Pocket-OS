@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 const DATA_FILE = path.join(__dirname, 'data', 'schedule_data.json');
 const STARTUP_TIME = new Date().toISOString();
-const BUILD_VERSION = '1.1.3';
+const BUILD_VERSION = '1.1.4';
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -16,6 +16,7 @@ app.use('/index.html', express.static(path.join(__dirname, 'index.html')));
 
 // 显式路由：只暴露必要文件
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.get('/canbox', (req, res) => res.sendFile(path.join(__dirname, 'canbox.html')));
 app.get('/package.json', (req, res) => res.sendFile(path.join(__dirname, 'package.json')));
 
 // 初始化数据目录和文件

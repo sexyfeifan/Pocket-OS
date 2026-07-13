@@ -55,10 +55,11 @@
     .title-display:hover { color: #B37D56; }
     .big-date { font-size: 2.4rem; font-weight: 700; line-height: 1; letter-spacing: -0.04em; }
     .modal-overlay { background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); }
-    .gantt-scroll { overflow-x: auto; position: relative; }
+    .gantt-scroll { overflow-x: auto; overflow-y: visible; -webkit-overflow-scrolling: touch; }
     .gantt-scroll::-webkit-scrollbar { height: 8px; }
     .gantt-scroll::-webkit-scrollbar-thumb { background: #D5D0C6; border-radius: 4px; }
     .gantt-scroll::-webkit-scrollbar-track { background: #F0EDE6; }
+    .gantt-sticky { position: sticky; left: 0; z-index: 10; }
     .toggle-track { width: 44px; height: 24px; border-radius: 12px; position: relative; cursor: pointer; transition: background 0.25s ease; }
     .toggle-track.on { background: #B37D56; }
     .toggle-track.off { background: #D5D0C6; }
@@ -123,7 +124,6 @@
         导入恢复
       </button>
       <input type="file" id="import-file" accept=".json" class="file-input-hidden" onchange="importData(event)">
-      <p class="text-xs text-coffee-light text-center leading-relaxed pt-1">建议保存到 iCloud 或云盘</p>
     </div>
     <div id="system-info" class="px-3 py-2 border-t border-beige-200 text-xs text-coffee-light space-y-0.5"></div>
   </aside>
@@ -602,8 +602,8 @@
     const todayFmt = todayStr();
     const defs = getStepDefs();
 
-    let html = '<table class="border-collapse" style="min-width:' + (COL_W + dates.length * CELL_W) + 'px;width:100%">';
-    html += '<thead><tr><th class="sticky left-0 bg-beige-50 z-10 p-2 text-xs text-coffee-light text-left border-b border-r border-beige-200" style="min-width:' + COL_W + 'px;width:' + COL_W + 'px">选题</th>';
+    let html = '<table class="border-collapse" style="min-width:' + (COL_W + dates.length * CELL_W) + 'px">';
+    html += '<thead><tr><th class="gantt-sticky bg-beige-50 p-2 text-xs text-coffee-light text-left border-b border-r border-beige-200" style="min-width:' + COL_W + 'px;width:' + COL_W + 'px">选题</th>';
     dates.forEach(d => {
       const isToday = d === todayFmt;
       const dow = new Date(d+'T00:00:00').getDay();
@@ -622,11 +622,11 @@
       const conflict = checkConflict(topic.productionSteps || []);
       const blocks = buildMergedBlocks(topic.productionSteps || [], dates);
 
-      html += `<tr><td class="sticky left-0 bg-white z-10 p-2 border-b border-r border-beige-200 cursor-pointer hover:bg-beige-50" style="min-width:${COL_W}px;width:${COL_W}px" onclick="selectTopic('${topic.id}')">
+      html += `<tr><td class="gantt-sticky bg-white p-2 border-b border-r border-beige-200 cursor-pointer hover:bg-beige-50" style="min-width:${COL_W}px;width:${COL_W}px" onclick="selectTopic('${topic.id}')">
         <div class="flex items-center gap-1">${conflict.hasConflict?'<svg class="w-3.5 h-3.5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>':''}<span class="text-sm font-medium truncate">${escapeHtml(topic.title)}</span></div>
         <div class="text-xs text-coffee-light mt-0.5">${topic.category||''} · ${progress}%</div></td>`;
 
-      html += `<td colspan="${dates.length}" class="border-b border-beige-200 p-0" style="position:relative">`;
+      html += `<td colspan="${dates.length}" class="border-b border-beige-200 p-0">`;
       const ROW_BASE = 52;
       const LANE_H = 26;
       const rowH = Math.max(ROW_BASE, blocks.maxLanes * LANE_H + 4);

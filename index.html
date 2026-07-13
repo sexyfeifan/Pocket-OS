@@ -125,6 +125,7 @@
       <input type="file" id="import-file" accept=".json" class="file-input-hidden" onchange="importData(event)">
       <p class="text-xs text-coffee-light text-center leading-relaxed pt-1">建议保存到 iCloud 或云盘</p>
     </div>
+    <div id="system-info" class="px-3 py-2 border-t border-beige-200 text-xs text-coffee-light space-y-0.5"></div>
   </aside>
 
   <!-- 主内容区 -->
@@ -178,6 +179,22 @@
         </div>
         <!-- 编辑卡片 -->
         <div id="edit-card-content" class="max-w-2xl mx-auto"></div>
+        <!-- 项目通告单日历 -->
+        <div id="project-calendar-section" class="max-w-2xl mx-auto mt-6">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <button onclick="projectCalPrev()" class="p-1 rounded hover:bg-beige-100 transition-colors">
+                <svg class="w-4 h-4 text-coffee-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+              </button>
+              <h3 id="project-cal-title" class="text-sm font-semibold text-coffee"></h3>
+              <button onclick="projectCalNext()" class="p-1 rounded hover:bg-beige-100 transition-colors">
+                <svg class="w-4 h-4 text-coffee-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+            <button onclick="exportCalendarImage()" class="text-xs text-brand border border-brand rounded-lg px-3 py-1.5 hover:bg-brand hover:text-white transition-colors">导出通告单</button>
+          </div>
+          <div id="project-calendar" class="bg-white rounded-xl shadow-sm border border-beige-200 overflow-hidden"></div>
+        </div>
       </div>
     </div>
 
@@ -278,6 +295,29 @@
 
   <!-- 分类选择下拉 -->
   <div id="category-dropdown" class="category-dropdown hidden bg-white rounded-lg shadow-lg border border-beige-200 py-1 min-w-[120px]"></div>
+
+  <!-- 备注编辑弹窗 -->
+  <div id="note-modal" class="fixed inset-0 z-50 hidden">
+    <div class="modal-overlay absolute inset-0" onclick="closeNoteModal()"></div>
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[360px] bg-white rounded-2xl shadow-2xl overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-beige-200">
+        <h3 id="note-modal-title" class="text-sm font-semibold text-coffee"></h3>
+        <button onclick="closeNoteModal()" class="p-1 text-coffee-light hover:text-coffee rounded hover:bg-beige-100">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="p-4">
+        <textarea id="note-text" rows="4" class="w-full text-sm border border-beige-200 rounded-lg p-2.5 bg-beige-50 text-coffee resize-none focus:ring-2 focus:ring-brand/30" placeholder="输入备注..."></textarea>
+      </div>
+      <div class="flex items-center justify-between px-5 py-3 border-t border-beige-200">
+        <button id="note-delete-btn" onclick="deleteNote()" class="text-xs text-red-500 hover:text-red-700">删除备注</button>
+        <div class="flex gap-2">
+          <button onclick="closeNoteModal()" class="px-3 py-1.5 text-xs text-coffee-light hover:text-coffee rounded-lg hover:bg-beige-100">取消</button>
+          <button onclick="saveNote()" class="px-4 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script>
   const CATEGORIES = ['内容', '广告'];
@@ -403,6 +443,7 @@
       if (!t.updatedAt) t.updatedAt = appState.lastModified || nowISO();
     });
     renderAll();
+    loadSystemInfo();
   }
 
   function markUpdated(topic) { topic.updatedAt = nowISO(); }
@@ -475,6 +516,18 @@
     cardTab.className = 'flex-1 py-2.5 text-xs font-medium text-center border-b-2 transition-colors ' + (view === 'card' ? 'border-brand text-brand' : 'border-transparent text-coffee-light');
     renderAll();
     if (view === 'calendar') setTimeout(scrollCalendarToToday, 50);
+    if (view === 'edit') {
+      const topic = appState.topics.find(t => t.id === selectedTopicId);
+      if (topic?.canboxImport?.shootStart) {
+        const d = new Date(topic.canboxImport.shootStart + 'T00:00:00');
+        projectCalYear = d.getFullYear();
+        projectCalMonth = d.getMonth();
+      } else {
+        const now = new Date();
+        projectCalYear = now.getFullYear();
+        projectCalMonth = now.getMonth();
+      }
+    }
   }
 
   // ── 日历无缝滚动 ──
@@ -1034,6 +1087,8 @@
       const input = document.getElementById('title-input-' + editingTitleId);
       if (input) { input.focus(); input.select(); }
     }
+
+    renderProjectCalendar();
   }
 
   // ── 交互函数 ──
@@ -1436,6 +1491,275 @@
     markUpdated(t); saveData(); closeCanboxImport(); renderAll();
   }
 
+  // ── 系统信息 ──
+  async function loadSystemInfo() {
+    try {
+      const res = await fetch('/api/system');
+      const sys = await res.json();
+      const el = document.getElementById('system-info');
+      if (!el) return;
+      const startD = new Date(sys.startupTime);
+      el.innerHTML = `
+        <div class="flex justify-between"><span>版本</span><span class="text-coffee font-medium">v${sys.version}</span></div>
+        <div class="flex justify-between"><span>启动时间</span><span>${startD.getMonth()+1}/${startD.getDate()} ${String(startD.getHours()).padStart(2,'0')}:${String(startD.getMinutes()).padStart(2,'0')}</span></div>
+        <div class="flex justify-between"><span>运行时长</span><span>${sys.uptime}</span></div>
+      `;
+    } catch (e) {}
+  }
+
+  // ── 项目通告单日历 ──
+  let projectCalMonth = new Date().getMonth();
+  let projectCalYear = new Date().getFullYear();
+  let noteEditTopicId = null;
+  let noteEditDate = null;
+
+  function renderProjectCalendar() {
+    const topic = appState.topics.find(t => t.id === selectedTopicId);
+    if (!topic) return;
+
+    // 如果项目有拍摄段，初始化到拍摄月份
+    if (topic.canboxImport?.shootStart && projectCalMonth === undefined) {
+      const d = new Date(topic.canboxImport.shootStart + 'T00:00:00');
+      projectCalYear = d.getFullYear();
+      projectCalMonth = d.getMonth();
+    }
+
+    const title = document.getElementById('project-cal-title');
+    title.textContent = `${projectCalYear}年 ${projectCalMonth + 1}月`;
+
+    const cal = document.getElementById('project-calendar');
+    const steps = topic.productionSteps || [];
+    const notes = topic.notes || {};
+    const today = todayStr();
+
+    // 项目日期范围
+    let minDate = today, maxDate = today;
+    steps.forEach(s => {
+      if (!minDate || s.startDate < minDate) minDate = s.startDate;
+      if (!maxDate || (s.endDate || s.startDate) > maxDate) maxDate = s.endDate || s.startDate;
+    });
+    if (topic.publishDate && topic.publishDate > maxDate) maxDate = topic.publishDate;
+    Object.keys(notes).forEach(d => { if (d > maxDate) maxDate = d; });
+
+    const firstDay = new Date(projectCalYear, projectCalMonth, 1);
+    const lastDay = new Date(projectCalYear, projectCalMonth + 1, 0);
+    const startPad = (firstDay.getDay() + 6) % 7; // 周一=0
+    const totalDays = lastDay.getDate();
+
+    let html = '<table class="w-full border-collapse">';
+    html += '<thead><tr>';
+    ['一', '二', '三', '四', '五', '六', '日'].forEach(d => {
+      html += `<th class="text-xs text-coffee-light font-normal py-2 border-b border-beige-200">${d}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+
+    let day = 1;
+    for (let row = 0; row < 6; row++) {
+      html += '<tr>';
+      for (let col = 0; col < 7; col++) {
+        if ((row === 0 && col < startPad) || day > totalDays) {
+          html += '<td class="border-b border-beige-100 p-1 align-top" style="height:72px"></td>';
+        } else {
+          const dateStr = `${projectCalYear}-${String(projectCalMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+          const isToday = dateStr === today;
+          const isInRange = dateStr >= minDate && dateStr <= maxDate;
+          const hasNote = notes[dateStr];
+          const daySteps = steps.filter(s => dateStr >= s.startDate && dateStr <= (s.endDate || s.startDate));
+
+          html += `<td class="border-b border-beige-100 p-1 align-top cursor-pointer hover:bg-beige-50 ${isToday?'bg-brand/5':''}" style="height:72px" onclick="openNoteModal('${topic.id}','${dateStr}')">
+            <div class="text-xs ${isToday?'text-brand font-bold':isInRange?'text-coffee':'text-coffee-light'} mb-1">${day}</div>`;
+
+          daySteps.forEach(s => {
+            html += `<div class="text-xs truncate rounded px-1 mb-0.5 text-white" style="background:${s.color}">${s.name}</div>`;
+          });
+
+          if (hasNote) {
+            html += `<div class="text-xs text-coffee-light truncate" title="${escapeHtml(hasNote)}">${escapeHtml(hasNote).slice(0, 8)}</div>`;
+          }
+
+          html += '</td>';
+          day++;
+        }
+      }
+      html += '</tr>';
+      if (day > totalDays) break;
+    }
+    html += '</tbody></table>';
+    cal.innerHTML = html;
+  }
+
+  function projectCalPrev() {
+    projectCalMonth--;
+    if (projectCalMonth < 0) { projectCalMonth = 11; projectCalYear--; }
+    renderProjectCalendar();
+  }
+  function projectCalNext() {
+    projectCalMonth++;
+    if (projectCalMonth > 11) { projectCalMonth = 0; projectCalYear++; }
+    renderProjectCalendar();
+  }
+
+  // ── 备注编辑 ──
+  function openNoteModal(topicId, dateStr) {
+    noteEditTopicId = topicId;
+    noteEditDate = dateStr;
+    const topic = appState.topics.find(t => t.id === topicId);
+    if (!topic) return;
+    if (!topic.notes) topic.notes = {};
+    const note = topic.notes[dateStr] || '';
+
+    document.getElementById('note-modal-title').textContent = dateStr;
+    document.getElementById('note-text').value = note;
+    document.getElementById('note-delete-btn').classList.toggle('hidden', !note);
+    document.getElementById('note-modal').classList.remove('hidden');
+    document.getElementById('note-text').focus();
+  }
+  function closeNoteModal() {
+    document.getElementById('note-modal').classList.add('hidden');
+    noteEditTopicId = null;
+    noteEditDate = null;
+  }
+  function saveNote() {
+    const topic = appState.topics.find(t => t.id === noteEditTopicId);
+    if (!topic || !noteEditDate) return;
+    const text = document.getElementById('note-text').value.trim();
+    if (!topic.notes) topic.notes = {};
+    if (text) topic.notes[noteEditDate] = text;
+    else delete topic.notes[noteEditDate];
+    markUpdated(topic); saveData(); closeNoteModal(); renderProjectCalendar();
+  }
+  function deleteNote() {
+    const topic = appState.topics.find(t => t.id === noteEditTopicId);
+    if (!topic || !noteEditDate) return;
+    if (!topic.notes) topic.notes = {};
+    delete topic.notes[noteEditDate];
+    markUpdated(topic); saveData(); closeNoteModal(); renderProjectCalendar();
+  }
+
+  // ── 导出通告单图片 ──
+  async function exportCalendarImage() {
+    const topic = appState.topics.find(t => t.id === selectedTopicId);
+    if (!topic) return;
+
+    const cb = topic.canboxImport || {};
+    const steps = topic.productionSteps || [];
+    const notes = topic.notes || {};
+
+    // 计算日期范围
+    let minDate = topic.publishDate, maxDate = topic.publishDate;
+    steps.forEach(s => {
+      if (s.startDate < minDate) minDate = s.startDate;
+      if ((s.endDate || s.startDate) > maxDate) maxDate = s.endDate || s.startDate;
+    });
+    Object.keys(notes).forEach(d => { if (d > maxDate) maxDate = d; });
+
+    // 创建导出容器
+    const container = document.createElement('div');
+    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;background:white;padding:32px;font-family:Inter,-apple-system,sans-serif;color:#4A3C31';
+    document.body.appendChild(container);
+
+    let html = `<div style="margin-bottom:24px">`;
+    html += `<h1 style="font-size:24px;font-weight:700;margin:0 0 8px">${escapeHtml(topic.title)} · 通告单</h1>`;
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;font-size:13px;color:#6B5B50">`;
+    if (cb.location) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#6BA3BE;margin-right:6px"></span>拍摄地: ${escapeHtml(cb.location)}</div>`;
+    if (cb.type) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#C8A2E8;margin-right:6px"></span>类型: ${escapeHtml(cb.type)}</div>`;
+    if (cb.startTime) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#A3968C;margin-right:6px"></span>开始时间: ${escapeHtml(cb.startTime)}</div>`;
+    if (cb.status) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#85CDCA;margin-right:6px"></span>状态: ${escapeHtml(cb.status)}</div>`;
+    if (cb.director) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#E8A87C;margin-right:6px"></span>导演: ${escapeHtml(cb.director)}</div>`;
+    if (cb.photographer) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#85CDCA;margin-right:6px"></span>摄影: ${escapeHtml(cb.photographer)}</div>`;
+    if (cb.production) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#D5A5E1;margin-right:6px"></span>制片: ${escapeHtml(cb.production)}</div>`;
+    if (cb.rd) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#A3D9A5;margin-right:6px"></span>研发: ${escapeHtml(cb.rd)}</div>`;
+    if (cb.business) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#F2D98B;margin-right:6px"></span>商务: ${escapeHtml(cb.business)}</div>`;
+    if (cb.audio) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#E1A5A5;margin-right:6px"></span>收音: ${escapeHtml(cb.audio)}</div>`;
+    if (cb.laodao) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#B37D56;margin-right:6px"></span>老刀出镜</div>`;
+    if (cb.advertiserNo) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#D4A574;margin-right:6px"></span>广告商单: ${escapeHtml(cb.advertiserNo)}</div>`;
+    html += `</div></div>`;
+
+    // 工序时间轴
+    html += `<div style="margin-bottom:16px;font-size:13px">`;
+    html += `<div style="display:flex;gap:12px;flex-wrap:wrap">`;
+    steps.forEach(s => {
+      const range = s.startDate === (s.endDate || s.startDate) ? shortDate(s.startDate) : `${shortDate(s.startDate)}~${shortDate(s.endDate || s.startDate)}`;
+      html += `<div style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${s.color}"></span>${s.name} ${range}</div>`;
+    });
+    html += `</div></div>`;
+
+    // 日历网格
+    html += `<div id="export-cal-grid"></div>`;
+
+    // 备注列表
+    const noteEntries = Object.entries(notes).sort();
+    if (noteEntries.length) {
+      html += `<div style="margin-top:16px;font-size:13px"><div style="font-weight:600;margin-bottom:6px">备注</div>`;
+      noteEntries.forEach(([d, text]) => {
+        html += `<div style="margin-bottom:4px"><span style="color:#A3968C">${d}</span> ${escapeHtml(text)}</div>`;
+      });
+      html += `</div>`;
+    }
+
+    container.innerHTML = html;
+
+    // 生成多月日历
+    const calGrid = container.querySelector('#export-cal-grid');
+    const startDate = new Date(minDate + 'T00:00:00');
+    const endDate = new Date(maxDate + 'T00:00:00');
+    let curMonth = startDate.getMonth();
+    let curYear = startDate.getFullYear();
+
+    while (curYear < endDate.getFullYear() || (curYear === endDate.getFullYear() && curMonth <= endDate.getMonth())) {
+      const monthDiv = document.createElement('div');
+      monthDiv.style.marginBottom = '12px';
+      let mh = `<div style="font-size:14px;font-weight:600;margin-bottom:6px">${curYear}年${curMonth+1}月</div>`;
+      mh += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+      mh += '<thead><tr>';
+      ['一','二','三','四','五','六','日'].forEach(d => mh += `<th style="padding:4px;border-bottom:1px solid #E8E4DC;color:#A3968C;font-weight:normal">${d}</th>`);
+      mh += '</tr></thead><tbody>';
+
+      const first = new Date(curYear, curMonth, 1);
+      const last = new Date(curYear, curMonth + 1, 0);
+      const pad = (first.getDay() + 6) % 7;
+      let cd = 1;
+      for (let r = 0; r < 6; r++) {
+        mh += '<tr>';
+        for (let c = 0; c < 7; c++) {
+          if ((r === 0 && c < pad) || cd > last.getDate()) {
+            mh += '<td style="padding:3px;border-bottom:1px solid #F0EDE6;height:40px;vertical-align:top"></td>';
+          } else {
+            const ds = `${curYear}-${String(curMonth+1).padStart(2,'0')}-${String(cd).padStart(2,'0')}`;
+            const dsSteps = steps.filter(s => ds >= s.startDate && ds <= (s.endDate || s.startDate));
+            const dsNote = notes[ds];
+            mh += `<td style="padding:3px;border-bottom:1px solid #F0EDE6;height:40px;vertical-align:top">`;
+            mh += `<div style="font-size:11px;color:#4A3C31;margin-bottom:2px">${cd}</div>`;
+            dsSteps.forEach(s => mh += `<div style="font-size:10px;color:white;background:${s.color};border-radius:2px;padding:0 3px;margin-bottom:1px;white-space:nowrap">${s.name}</div>`);
+            if (dsNote) mh += `<div style="font-size:10px;color:#A3968C;white-space:nowrap;overflow:hidden">${escapeHtml(dsNote)}</div>`;
+            mh += '</td>';
+            cd++;
+          }
+        }
+        mh += '</tr>';
+        if (cd > last.getDate()) break;
+      }
+      mh += '</tbody></table>';
+      monthDiv.innerHTML = mh;
+      calGrid.appendChild(monthDiv);
+
+      curMonth++;
+      if (curMonth > 11) { curMonth = 0; curYear++; }
+    }
+
+    // 用 html2canvas 导出
+    try {
+      const canvas = await html2canvas(container, { scale: 2, useCORS: true });
+      const a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = `${topic.title}_通告单.png`;
+      a.click();
+    } catch (e) {
+      alert('导出失败: ' + e.message);
+    }
+    document.body.removeChild(container);
+  }
+
   // ── 初始化 ──
   loadData().then(() => switchView('calendar'));
   document.addEventListener('keydown', e => {
@@ -1444,5 +1768,6 @@
     if (e.key==='Escape') { closeSettings(); closeCategory(); closeStepPopup(); }
   });
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </body>
 </html>

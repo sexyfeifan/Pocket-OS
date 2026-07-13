@@ -7,6 +7,8 @@ const https = require('https');
 const app = express();
 const PORT = process.env.PORT || 8080;
 const DATA_FILE = path.join(__dirname, 'data', 'schedule_data.json');
+const STARTUP_TIME = new Date().toISOString();
+const BUILD_VERSION = '1.0.5';
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(__dirname));
@@ -86,6 +88,16 @@ app.get('/api/canbox/proxy', (req, res) => {
   });
   proxyReq.on('error', err => res.status(502).json({ error: 'proxy error', detail: err.message }));
   proxyReq.setTimeout(10000, () => { proxyReq.destroy(); res.status(504).json({ error: 'timeout' }); });
+});
+
+// GET /api/system — 系统状态信息
+app.get('/api/system', (req, res) => {
+  const uptimeSeconds = Math.floor((Date.now() - new Date(STARTUP_TIME).getTime()) / 1000);
+  const days = Math.floor(uptimeSeconds / 86400);
+  const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+  const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+  const uptime = days > 0 ? `${days}天 ${hours}小时 ${minutes}分钟` : hours > 0 ? `${hours}小时 ${minutes}分钟` : `${minutes}分钟`;
+  res.json({ version: BUILD_VERSION, startupTime: STARTUP_TIME, uptime, uptimeSeconds });
 });
 
 app.listen(PORT, () => {

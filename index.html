@@ -717,7 +717,7 @@
 
     const steps = topic.productionSteps || [];
     const existing = steps.find(s => s.key === stepKey);
-    const newEnd = def.duration > 0 ? addDays(date, def.duration - 1) : date;
+    const newEnd = date;
 
     if (existing) {
       const stepIdx = defs.findIndex(d => d.key === stepKey);
@@ -755,7 +755,7 @@
         }
       }
     } else {
-      topic.productionSteps.push({ key: def.key, name: def.name, startDate: date, endDate: newEnd, duration: def.duration, color: def.color, done: false });
+      topic.productionSteps.push({ key: def.key, name: def.name, startDate: date, endDate: date, duration: 1, color: def.color, done: false });
     }
 
     markUpdated(topic);

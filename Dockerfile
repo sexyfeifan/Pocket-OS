@@ -2,6 +2,9 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+ARG VERSION=dev
+ENV APP_VERSION=${VERSION}
+
 COPY package.json package-lock.json ./
 RUN npm ci --production
 

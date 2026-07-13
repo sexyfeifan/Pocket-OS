@@ -1746,12 +1746,12 @@
             const ds = `${curYear}-${String(curMonth+1).padStart(2,'0')}-${String(cd).padStart(2,'0')}`;
             const dsSteps = steps.filter(s => ds >= s.startDate && ds <= (s.endDate || s.startDate));
             const dsNote = notes[ds];
-            mh += `<td style="padding:${CELL_PAD}px;border:1px solid #F0EDE6;width:${CELL}px;height:${CELL_H}px;vertical-align:top;box-sizing:border-box;overflow:hidden">`;
+            mh += `<td style="padding:${CELL_PAD}px;border:1px solid #F0EDE6;width:${CELL}px;height:${CELL_H}px;vertical-align:top;box-sizing:border-box">`;
             mh += `<div style="font-size:11px;color:#4A3C31;margin-bottom:2px;line-height:14px">${cd}</div>`;
             dsSteps.forEach(s => {
-              mh += `<div style="font-size:10px;color:#4A3C31;line-height:16px;height:16px;margin-bottom:1px;overflow:hidden"><span style="display:inline-block;width:3px;height:12px;background:${s.color};vertical-align:middle;margin-right:4px"></span><span style="vertical-align:middle">${s.name}</span></div>`;
+              mh += `<div class="cal-tag" style="font-size:10px;color:#4A3C31;line-height:1;margin-bottom:1px;padding:2px 0"><span style="display:inline-block;width:3px;height:10px;background:${s.color};vertical-align:middle;margin-right:4px"></span><span style="vertical-align:middle">${s.name}</span></div>`;
             });
-            if (dsNote) mh += `<div style="font-size:9px;color:#A3968C;line-height:14px;margin-top:1px;overflow:hidden">${escapeHtml(dsNote)}</div>`;
+            if (dsNote) mh += `<div style="font-size:9px;color:#A3968C;line-height:1;margin-top:1px;padding:1px 0">${escapeHtml(dsNote)}</div>`;
             mh += '</td>';
             cd++;
           }
@@ -1768,7 +1768,19 @@
 
     // ── 用 html2canvas 导出，在新窗口打开 ──
     try {
-      const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#FAF7F2' });
+      const canvas = await html2canvas(container, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#FAF7F2',
+        onclone: (clonedDoc) => {
+          clonedDoc.querySelectorAll('.cal-tag').forEach(tag => {
+            tag.style.overflow = 'visible';
+            tag.style.lineHeight = '1';
+            tag.style.height = 'auto';
+            tag.style.paddingBottom = '3px';
+          });
+        }
+      });
       const dataUrl = canvas.toDataURL('image/png');
       const win = window.open('');
       if (win) {

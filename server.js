@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 const DATA_FILE = path.join(__dirname, 'data', 'schedule_data.json');
 const STARTUP_TIME = new Date().toISOString();
-const BUILD_VERSION = '1.0.9';
+const BUILD_VERSION = '1.1.0';
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(__dirname));

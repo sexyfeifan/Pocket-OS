@@ -22,6 +22,7 @@
 services:
   pocket-os:
     image: sexyfeifan/pocket-os:latest
+    platform: linux/amd64
     ports:
       - "8080:8080"
     volumes:

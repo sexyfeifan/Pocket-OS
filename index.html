@@ -720,25 +720,41 @@
     const newEnd = def.duration > 0 ? addDays(date, def.duration - 1) : date;
 
     if (existing) {
-      // 替换：移动已有工序到新日期
-      const oldStart = existing.startDate;
-      const delta = daysBetween(oldStart, date);
+      const stepIdx = defs.findIndex(d => d.key === stepKey);
+      const delta = daysBetween(existing.startDate, date);
       existing.startDate = date;
       existing.endDate = newEnd;
 
-      // 级联：同序列中该工序之后的工序，按原相对间隔跟随移动
-      const stepIdx = defs.findIndex(d => d.key === stepKey);
-      for (let i = stepIdx + 1; i < defs.length; i++) {
-        const nextDef = defs[i];
-        const nextStep = steps.find(s => s.key === nextDef.key);
-        if (!nextStep) continue;
-        const newStart = addDays(nextStep.startDate, delta);
-        const dur = daysBetween(nextStep.startDate, nextStep.endDate);
-        nextStep.startDate = newStart;
-        nextStep.endDate = addDays(newStart, dur);
+      // 向后推挤
+      if (delta > 0) {
+        let prevEnd = existing.endDate;
+        for (let i = stepIdx + 1; i < defs.length; i++) {
+          const next = steps.find(s => s.key === defs[i].key);
+          if (!next) continue;
+          if (next.startDate <= prevEnd) {
+            const shift = daysBetween(next.startDate, addDays(prevEnd, 1));
+            next.startDate = addDays(next.startDate, shift);
+            next.endDate = addDays(next.endDate, shift);
+            prevEnd = next.endDate;
+          } else break;
+        }
+      }
+
+      // 向前推挤
+      if (delta < 0) {
+        let prevStart = existing.startDate;
+        for (let i = stepIdx - 1; i >= 0; i--) {
+          const prev = steps.find(s => s.key === defs[i].key);
+          if (!prev) continue;
+          if (prev.endDate >= prevStart) {
+            const shift = daysBetween(prev.endDate, addDays(prevStart, -1));
+            prev.startDate = addDays(prev.startDate, shift);
+            prev.endDate = addDays(prev.endDate, shift);
+            prevStart = prev.startDate;
+          } else break;
+        }
       }
     } else {
-      // 新增：插入新工序
       topic.productionSteps.push({ key: def.key, name: def.name, startDate: date, endDate: newEnd, duration: def.duration, color: def.color, done: false });
     }
 
@@ -798,25 +814,47 @@
     if (!dragData) return;
     const topic = appState.topics.find(t => t.id === dragData.topicId);
     if (!topic) return;
-    const step = topic.productionSteps.find(s => s.key === dragData.stepKey);
-    if (!step) return;
-    const dur = daysBetween(step.startDate, step.endDate);
-    const oldStart = step.startDate;
-    const delta = daysBetween(oldStart, targetDate);
-    step.startDate = targetDate; step.endDate = addDays(targetDate, dur);
-
-    // 发布工序拖拽 → 同步 publishDate
-    if (step.key === 'publish') topic.publishDate = targetDate;
-
-    // 级联：下游工序按原间隔跟随
+    const steps = topic.productionSteps;
     const defs = getStepDefs();
     const stepIdx = defs.findIndex(d => d.key === dragData.stepKey);
-    for (let i = stepIdx + 1; i < defs.length; i++) {
-      const nextStep = topic.productionSteps.find(s => s.key === defs[i].key);
-      if (!nextStep) continue;
-      const nextDur = daysBetween(nextStep.startDate, nextStep.endDate);
-      nextStep.startDate = addDays(nextStep.startDate, delta);
-      nextStep.endDate = addDays(nextStep.startDate, nextDur);
+    const step = steps.find(s => s.key === dragData.stepKey);
+    if (!step || stepIdx < 0) return;
+
+    const dur = daysBetween(step.startDate, step.endDate);
+    const newEnd = addDays(targetDate, dur);
+    const delta = daysBetween(step.startDate, targetDate);
+    step.startDate = targetDate;
+    step.endDate = newEnd;
+    if (step.key === 'publish') topic.publishDate = targetDate;
+
+    // 向后推挤：如果移动后与下一个工序接触/重叠，推走后续工序
+    if (delta > 0) {
+      let prevEnd = step.endDate;
+      for (let i = stepIdx + 1; i < defs.length; i++) {
+        const next = steps.find(s => s.key === defs[i].key);
+        if (!next) continue;
+        if (next.startDate <= prevEnd) {
+          const shift = daysBetween(next.startDate, addDays(prevEnd, 1));
+          next.startDate = addDays(next.startDate, shift);
+          next.endDate = addDays(next.endDate, shift);
+          prevEnd = next.endDate;
+        } else break;
+      }
+    }
+
+    // 向前推挤：如果移动后与上一个工序接触/重叠，推走上一个工序
+    if (delta < 0) {
+      let prevStart = step.startDate;
+      for (let i = stepIdx - 1; i >= 0; i--) {
+        const prev = steps.find(s => s.key === defs[i].key);
+        if (!prev) continue;
+        if (prev.endDate >= prevStart) {
+          const shift = daysBetween(prev.endDate, addDays(prevStart, -1));
+          prev.startDate = addDays(prev.startDate, shift);
+          prev.endDate = addDays(prev.endDate, shift);
+          prevStart = prev.startDate;
+        } else break;
+      }
     }
 
     markUpdated(topic); saveData(); renderAll(); dragData = null;

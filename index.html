@@ -1686,10 +1686,9 @@
     if (cb.shootStart && cb.shootEnd) infoItems.push(['#A5C8E1', '拍摄段', `${cb.shootStart} ~ ${cb.shootEnd}`]);
 
     if (infoItems.length) {
-      const half = Math.ceil(infoItems.length / 2);
-      html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;margin-bottom:16px;font-size:13px">`;
+      html += `<div style="margin-bottom:16px;font-size:13px;line-height:22px">`;
       infoItems.forEach(([color, label, value]) => {
-        html += `<div style="display:flex;align-items:center;gap:6px;line-height:18px"><div style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0"></div><span style="color:#A3968C;flex-shrink:0;width:56px">${label}</span><span style="font-weight:500">${escapeHtml(value)}</span></div>`;
+        html += `<span style="display:inline-block;vertical-align:middle;margin-right:28px;margin-bottom:4px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};vertical-align:middle;margin-right:6px"></span><span style="display:inline-block;vertical-align:middle;color:#A3968C;width:52px">${label}</span><span style="display:inline-block;vertical-align:middle;font-weight:500">${escapeHtml(value)}</span></span>`;
       });
       html += `</div>`;
     }
@@ -1714,7 +1713,7 @@
     let curMonth = startDate.getMonth();
     let curYear = startDate.getFullYear();
     const CELL = 100;
-    const CELL_H = 68;
+    const CELL_PAD = 4;
 
     while (curYear < endDate.getFullYear() || (curYear === endDate.getFullYear() && curMonth <= endDate.getMonth())) {
       const monthDiv = document.createElement('div');
@@ -1733,15 +1732,15 @@
         mh += '<tr>';
         for (let c = 0; c < 7; c++) {
           if ((r === 0 && c < pad) || cd > last.getDate()) {
-            mh += `<td style="padding:3px;border:1px solid #F0EDE6;width:${CELL}px;height:${CELL_H}px;vertical-align:top;box-sizing:border-box"></td>`;
+            mh += `<td style="padding:${CELL_PAD}px;border:1px solid #F0EDE6;width:${CELL}px;vertical-align:top;box-sizing:border-box"></td>`;
           } else {
             const ds = `${curYear}-${String(curMonth+1).padStart(2,'0')}-${String(cd).padStart(2,'0')}`;
             const dsSteps = steps.filter(s => ds >= s.startDate && ds <= (s.endDate || s.startDate));
             const dsNote = notes[ds];
-            mh += `<td style="padding:3px;border:1px solid #F0EDE6;width:${CELL}px;height:${CELL_H}px;vertical-align:top;box-sizing:border-box;overflow:visible">`;
-            mh += `<div style="font-size:11px;color:#4A3C31;margin-bottom:2px">${cd}</div>`;
-            dsSteps.forEach(s => mh += `<div style="font-size:10px;color:white;background:${s.color};border-radius:2px;padding:1px 4px;margin-bottom:1px;white-space:nowrap;line-height:16px">${s.name}</div>`);
-            if (dsNote) mh += `<div style="font-size:10px;color:#A3968C;line-height:14px;word-break:break-all">${escapeHtml(dsNote)}</div>`;
+            mh += `<td style="padding:${CELL_PAD}px;border:1px solid #F0EDE6;width:${CELL}px;vertical-align:top;box-sizing:border-box">`;
+            mh += `<div style="font-size:11px;color:#4A3C31;margin-bottom:3px">${cd}</div>`;
+            dsSteps.forEach(s => mh += `<div style="font-size:10px;color:white;background:${s.color};border-radius:3px;padding:2px 5px;margin-bottom:2px;white-space:nowrap;line-height:16px">${s.name}</div>`);
+            if (dsNote) mh += `<div style="font-size:10px;color:#A3968C;line-height:14px;margin-top:2px;word-break:break-all">${escapeHtml(dsNote)}</div>`;
             mh += '</td>';
             cd++;
           }

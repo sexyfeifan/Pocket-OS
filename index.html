@@ -1644,9 +1644,10 @@
     const cb = topic.canboxImport || {};
     const steps = topic.productionSteps || [];
     const notes = topic.notes || {};
+    const pubDate = topic.publishDate || '';
 
     // 计算日期范围
-    let minDate = topic.publishDate, maxDate = topic.publishDate;
+    let minDate = pubDate, maxDate = pubDate;
     steps.forEach(s => {
       if (s.startDate < minDate) minDate = s.startDate;
       if ((s.endDate || s.startDate) > maxDate) maxDate = s.endDate || s.startDate;
@@ -1655,64 +1656,96 @@
 
     // 创建导出容器
     const container = document.createElement('div');
-    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;background:white;padding:32px;font-family:Inter,-apple-system,sans-serif;color:#4A3C31';
+    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:820px;background:#FAF7F2;padding:36px 40px;font-family:Inter,-apple-system,sans-serif;color:#4A3C31;box-sizing:border-box';
     document.body.appendChild(container);
 
-    let html = `<div style="margin-bottom:24px">`;
-    html += `<h1 style="font-size:24px;font-weight:700;margin:0 0 8px">${escapeHtml(topic.title)} · 通告单</h1>`;
-    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;font-size:13px;color:#6B5B50">`;
-    if (cb.location) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#6BA3BE;margin-right:6px"></span>拍摄地: ${escapeHtml(cb.location)}</div>`;
-    if (cb.type) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#C8A2E8;margin-right:6px"></span>类型: ${escapeHtml(cb.type)}</div>`;
-    if (cb.startTime) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#A3968C;margin-right:6px"></span>开始时间: ${escapeHtml(cb.startTime)}</div>`;
-    if (cb.status) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#85CDCA;margin-right:6px"></span>状态: ${escapeHtml(cb.status)}</div>`;
-    if (cb.director) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#E8A87C;margin-right:6px"></span>导演: ${escapeHtml(cb.director)}</div>`;
-    if (cb.photographer) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#85CDCA;margin-right:6px"></span>摄影: ${escapeHtml(cb.photographer)}</div>`;
-    if (cb.production) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#D5A5E1;margin-right:6px"></span>制片: ${escapeHtml(cb.production)}</div>`;
-    if (cb.rd) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#A3D9A5;margin-right:6px"></span>研发: ${escapeHtml(cb.rd)}</div>`;
-    if (cb.business) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#F2D98B;margin-right:6px"></span>商务: ${escapeHtml(cb.business)}</div>`;
-    if (cb.audio) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#E1A5A5;margin-right:6px"></span>收音: ${escapeHtml(cb.audio)}</div>`;
-    if (cb.laodao) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#B37D56;margin-right:6px"></span>老刀出镜</div>`;
-    if (cb.advertiserNo) html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#D4A574;margin-right:6px"></span>广告商单: ${escapeHtml(cb.advertiserNo)}</div>`;
-    html += `</div></div>`;
+    // ── 头部：标题 + 发布日期 ──
+    let html = `<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">`;
+    html += `<div><h1 style="font-size:22px;font-weight:700;margin:0 0 4px">${escapeHtml(topic.title)}</h1><div style="font-size:13px;color:#A3968C">通告单</div></div>`;
+    if (pubDate) {
+      const p = pubDate.split('-');
+      html += `<div style="text-align:right"><div style="font-size:11px;color:#A3968C;margin-bottom:2px">发布日期</div><div style="font-size:36px;font-weight:700;line-height:1;letter-spacing:-1px">${parseInt(p[1])}/${parseInt(p[2])}</div></div>`;
+    }
+    html += `</div>`;
 
-    // 工序时间轴
-    html += `<div style="margin-bottom:16px;font-size:13px">`;
-    html += `<div style="display:flex;gap:12px;flex-wrap:wrap">`;
+    // ── 通告信息（表格对齐）──
+    const infoRows = [];
+    if (cb.location) infoRows.push(['#6BA3BE', '拍摄地', cb.location]);
+    if (cb.type) infoRows.push(['#C8A2E8', '类型', cb.type]);
+    if (cb.startTime) infoRows.push(['#A3968C', '开始时间', cb.startTime]);
+    if (cb.status) infoRows.push(['#85CDCA', '状态', cb.status]);
+    if (cb.director) infoRows.push(['#E8A87C', '导演', cb.director]);
+    if (cb.photographer) infoRows.push(['#85CDCA', '摄影', cb.photographer]);
+    if (cb.production) infoRows.push(['#D5A5E1', '制片', cb.production]);
+    if (cb.rd) infoRows.push(['#A3D9A5', '研发', cb.rd]);
+    if (cb.business) infoRows.push(['#F2D98B', '商务', cb.business]);
+    if (cb.audio) infoRows.push(['#E1A5A5', '收音', cb.audio]);
+    if (cb.operational) infoRows.push(['#B8D4E3', '运营', cb.operational]);
+    if (cb.laodao) infoRows.push(['#B37D56', '老刀出镜', '是']);
+    if (cb.advertiserNo) infoRows.push(['#D4A574', '广告商单', cb.advertiserNo]);
+    if (cb.shootStart && cb.shootEnd) infoRows.push(['#A5C8E1', '拍摄段', `${cb.shootStart} ~ ${cb.shootEnd}`]);
+
+    if (infoRows.length) {
+      const half = Math.ceil(infoRows.length / 2);
+      html += `<table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px">`;
+      for (let i = 0; i < half; i++) {
+        html += `<tr>`;
+        const left = infoRows[i];
+        const right = infoRows[i + half];
+        html += `<td style="padding:3px 0;width:8px;vertical-align:middle"><div style="width:8px;height:8px;border-radius:50%;background:${left[0]}"></div></td>`;
+        html += `<td style="padding:3px 4px;vertical-align:middle;color:#A3968C;width:60px">${left[1]}</td>`;
+        html += `<td style="padding:3px 16px 3px 0;vertical-align:middle;font-weight:500">${escapeHtml(left[2])}</td>`;
+        if (right) {
+          html += `<td style="padding:3px 0;width:8px;vertical-align:middle"><div style="width:8px;height:8px;border-radius:50%;background:${right[0]}"></div></td>`;
+          html += `<td style="padding:3px 4px;vertical-align:middle;color:#A3968C;width:60px">${right[1]}</td>`;
+          html += `<td style="padding:3px 0;vertical-align:middle;font-weight:500">${escapeHtml(right[2])}</td>`;
+        } else {
+          html += `<td></td><td></td><td></td>`;
+        }
+        html += `</tr>`;
+      }
+      html += `</table>`;
+    }
+
+    // ── 工序时间轴 ──
+    html += `<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;font-size:12px">`;
     steps.forEach(s => {
       const range = s.startDate === (s.endDate || s.startDate) ? shortDate(s.startDate) : `${shortDate(s.startDate)}~${shortDate(s.endDate || s.startDate)}`;
-      html += `<div style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${s.color}"></span>${s.name} ${range}</div>`;
+      html += `<div style="display:flex;align-items:center;gap:4px"><div style="width:10px;height:10px;border-radius:2px;background:${s.color};flex-shrink:0"></div><span>${s.name} ${range}</span></div>`;
     });
-    html += `</div></div>`;
+    html += `</div>`;
 
-    // 日历网格
+    // ── 日历网格容器 ──
     html += `<div id="export-cal-grid"></div>`;
 
-    // 备注列表
+    // ── 备注列表 ──
     const noteEntries = Object.entries(notes).sort();
     if (noteEntries.length) {
-      html += `<div style="margin-top:16px;font-size:13px"><div style="font-weight:600;margin-bottom:6px">备注</div>`;
+      html += `<div style="margin-top:16px;font-size:12px"><div style="font-weight:600;margin-bottom:6px">备注</div>`;
       noteEntries.forEach(([d, text]) => {
-        html += `<div style="margin-bottom:4px"><span style="color:#A3968C">${d}</span> ${escapeHtml(text)}</div>`;
+        html += `<div style="margin-bottom:3px"><span style="color:#A3968C;display:inline-block;width:80px">${d}</span>${escapeHtml(text)}</div>`;
       });
       html += `</div>`;
     }
 
     container.innerHTML = html;
 
-    // 生成多月日历
+    // ── 生成多月日历（固定单元格大小）──
     const calGrid = container.querySelector('#export-cal-grid');
     const startDate = new Date(minDate + 'T00:00:00');
     const endDate = new Date(maxDate + 'T00:00:00');
     let curMonth = startDate.getMonth();
     let curYear = startDate.getFullYear();
+    const CELL = 96;
+    const CELL_H = 56;
 
     while (curYear < endDate.getFullYear() || (curYear === endDate.getFullYear() && curMonth <= endDate.getMonth())) {
       const monthDiv = document.createElement('div');
-      monthDiv.style.marginBottom = '12px';
+      monthDiv.style.marginBottom = '16px';
       let mh = `<div style="font-size:14px;font-weight:600;margin-bottom:6px">${curYear}年${curMonth+1}月</div>`;
-      mh += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+      mh += `<table style="width:${CELL*7}px;border-collapse:collapse;font-size:11px;table-layout:fixed">`;
       mh += '<thead><tr>';
-      ['一','二','三','四','五','六','日'].forEach(d => mh += `<th style="padding:4px;border-bottom:1px solid #E8E4DC;color:#A3968C;font-weight:normal">${d}</th>`);
+      ['一','二','三','四','五','六','日'].forEach(d => mh += `<th style="padding:4px 0;border-bottom:1px solid #D5D0C6;color:#A3968C;font-weight:normal;width:${CELL}px;height:24px">${d}</th>`);
       mh += '</tr></thead><tbody>';
 
       const first = new Date(curYear, curMonth, 1);
@@ -1723,15 +1756,15 @@
         mh += '<tr>';
         for (let c = 0; c < 7; c++) {
           if ((r === 0 && c < pad) || cd > last.getDate()) {
-            mh += '<td style="padding:3px;border-bottom:1px solid #F0EDE6;height:40px;vertical-align:top"></td>';
+            mh += `<td style="padding:3px;border:1px solid #F0EDE6;width:${CELL}px;height:${CELL_H}px;vertical-align:top;box-sizing:border-box"></td>`;
           } else {
             const ds = `${curYear}-${String(curMonth+1).padStart(2,'0')}-${String(cd).padStart(2,'0')}`;
             const dsSteps = steps.filter(s => ds >= s.startDate && ds <= (s.endDate || s.startDate));
             const dsNote = notes[ds];
-            mh += `<td style="padding:3px;border-bottom:1px solid #F0EDE6;height:40px;vertical-align:top">`;
+            mh += `<td style="padding:3px;border:1px solid #F0EDE6;width:${CELL}px;height:${CELL_H}px;vertical-align:top;box-sizing:border-box;overflow:hidden">`;
             mh += `<div style="font-size:11px;color:#4A3C31;margin-bottom:2px">${cd}</div>`;
-            dsSteps.forEach(s => mh += `<div style="font-size:10px;color:white;background:${s.color};border-radius:2px;padding:0 3px;margin-bottom:1px;white-space:nowrap">${s.name}</div>`);
-            if (dsNote) mh += `<div style="font-size:10px;color:#A3968C;white-space:nowrap;overflow:hidden">${escapeHtml(dsNote)}</div>`;
+            dsSteps.forEach(s => mh += `<div style="font-size:9px;color:white;background:${s.color};border-radius:2px;padding:1px 3px;margin-bottom:1px;overflow:hidden;white-space:nowrap">${s.name}</div>`);
+            if (dsNote) mh += `<div style="font-size:9px;color:#A3968C;overflow:hidden;white-space:nowrap">${escapeHtml(dsNote)}</div>`;
             mh += '</td>';
             cd++;
           }
@@ -1742,18 +1775,19 @@
       mh += '</tbody></table>';
       monthDiv.innerHTML = mh;
       calGrid.appendChild(monthDiv);
-
       curMonth++;
       if (curMonth > 11) { curMonth = 0; curYear++; }
     }
 
-    // 用 html2canvas 导出
+    // ── 用 html2canvas 导出，在新窗口打开 ──
     try {
-      const canvas = await html2canvas(container, { scale: 2, useCORS: true });
-      const a = document.createElement('a');
-      a.href = canvas.toDataURL('image/png');
-      a.download = `${topic.title}_通告单.png`;
-      a.click();
+      const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#FAF7F2' });
+      const dataUrl = canvas.toDataURL('image/png');
+      const win = window.open('');
+      if (win) {
+        win.document.write(`<!DOCTYPE html><html><head><title>${escapeHtml(topic.title)}_通告单</title><style>body{margin:0;display:flex;justify-content:center;align-items:flex-start;min-height:100vh;background:#f5f2ed;padding:20px}img{max-width:100%;height:auto;box-shadow:0 2px 12px rgba(0,0,0,0.1)}</style></head><body><img src="${dataUrl}" alt="通告单"></body></html>`);
+        win.document.close();
+      }
     } catch (e) {
       alert('导出失败: ' + e.message);
     }

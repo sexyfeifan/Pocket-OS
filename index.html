@@ -332,7 +332,10 @@
       </div>
       <div class="flex-1 overflow-y-auto p-5">
         <textarea id="tml-input" rows="8" class="w-full text-sm border border-beige-200 rounded-lg p-3 bg-beige-50 text-coffee resize-none font-mono" placeholder="粘贴 TML 排期文本...&#10;&#10;示例：&#10;脚本 7.20&#10;拍摄 7.23-30&#10;ACO 8.13&#10;BCO 8.17&#10;发布 8.18"></textarea>
-        <button onclick="parseTml()" class="mt-3 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark transition-colors">解析</button>
+        <div class="flex gap-2 mt-3">
+          <button onclick="parseTml()" class="px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark transition-colors">解析并应用</button>
+          <button onclick="recordTml()" class="px-4 py-2 border border-beige-300 text-coffee text-sm rounded-lg hover:bg-beige-100 transition-colors">仅记录</button>
+        </div>
         <div id="tml-preview" class="mt-4 hidden"></div>
       </div>
     </div>
@@ -1144,6 +1147,17 @@
       });
     }
     html += `</div></div>`;
+
+    // TML 便签
+    if (topic.tmlNote) {
+      html += `<div>
+        <div class="flex items-center justify-between mb-1">
+          <h4 class="text-xs text-coffee-light">TML 记录</h4>
+          <button onclick="editTmlNote('${topic.id}')" class="text-xs text-brand hover:text-brand-dark">编辑</button>
+        </div>
+        <div id="tml-note-display" class="bg-[#FFFDF5] border border-[#F0E6D0] rounded-lg p-3 text-sm text-coffee whitespace-pre-wrap font-mono leading-relaxed cursor-pointer" onclick="editTmlNote('${topic.id}')">${escapeHtml(topic.tmlNote)}</div>
+      </div>`;
+    }
 
     // 发布平台
     html += `<div>
@@ -1983,6 +1997,34 @@
     document.getElementById('tml-modal').classList.add('hidden');
     tmlTopicId = null;
     tmlParsed = null;
+  }
+
+  function recordTml() {
+    const input = document.getElementById('tml-input').value.trim();
+    if (!input) { alert('请粘贴 TML 文本'); return; }
+    const topic = appState.topics.find(t => t.id === tmlTopicId);
+    if (!topic) return;
+    topic.tmlNote = input;
+    markUpdated(topic); saveData(); closeTmlModal(); renderAll();
+  }
+
+  function editTmlNote(topicId) {
+    const topic = appState.topics.find(t => t.id === topicId);
+    if (!topic || !topic.tmlNote) return;
+    const el = document.getElementById('tml-note-display');
+    if (!el) return;
+    const currentText = topic.tmlNote;
+    el.outerHTML = `<textarea id="tml-note-edit" class="w-full bg-[#FFFDF5] border border-[#F0E6D0] rounded-lg p-3 text-sm text-coffee font-mono leading-relaxed resize-none" rows="6" onblur="saveTmlNote('${topicId}',this.value)" onkeydown="if(event.key==='Escape'){this.blur()}">${escapeHtml(currentText)}</textarea>`;
+    document.getElementById('tml-note-edit').focus();
+  }
+
+  function saveTmlNote(topicId, value) {
+    const topic = appState.topics.find(t => t.id === topicId);
+    if (!topic) return;
+    const text = value.trim();
+    if (text) topic.tmlNote = text;
+    else delete topic.tmlNote;
+    markUpdated(topic); saveData(); renderEditPage();
   }
 
   // 标准工序关键词映射

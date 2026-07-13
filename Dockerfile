@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --production
 
-COPY server.js index.html ./
+COPY server.js index.html canbox.html ./
 RUN mkdir -p /app/data
 
 ENV PORT=8080

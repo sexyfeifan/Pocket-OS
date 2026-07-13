@@ -1579,20 +1579,23 @@
 
     const shootStart = p.dates[0];
     const shootEnd = p.dates[p.dates.length - 1];
+    const hasExistingSteps = (t.productionSteps || []).length > 0;
 
-    // 用 Canbox 拍摄段重新倒排
-    const steps = getStepDefs();
-    const shootDef = steps.find(s => s.key === 'shoot');
-    const shootIdx = steps.indexOf(shootDef);
-    let postDays = 0;
-    if (shootIdx >= 0) {
-      for (let i = shootIdx + 1; i < steps.length; i++) postDays += steps[i].duration || 1;
+    if (hasExistingSteps) {
+      // 已有排期：只更新通告元数据，不动排期时间
+    } else {
+      // 无排期：用通告拍摄段自动倒排
+      const steps = getStepDefs();
+      const shootDef = steps.find(s => s.key === 'shoot');
+      const shootIdx = steps.indexOf(shootDef);
+      let postDays = 0;
+      if (shootIdx >= 0) {
+        for (let i = shootIdx + 1; i < steps.length; i++) postDays += steps[i].duration || 1;
+      }
+      const publishDate = addDays(shootEnd, postDays + 1);
+      t.productionSteps = anchorSchedule(shootStart, shootEnd, publishDate);
+      t.publishDate = publishDate;
     }
-    const publishDate = addDays(shootEnd, postDays + 1);
-    const doneMap = {}; (t.productionSteps || []).forEach(s => { doneMap[s.key] = s.done; });
-    t.productionSteps = anchorSchedule(shootStart, shootEnd, publishDate);
-    t.productionSteps.forEach(s => { if (doneMap[s.key]) s.done = true; });
-    t.publishDate = publishDate;
 
     t.canboxImport = { source: 'canbox', shootStart, shootEnd, dates: p.dates, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations };
     markUpdated(t); saveData(); closeCanboxImport(); renderAll();

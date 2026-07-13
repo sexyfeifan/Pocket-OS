@@ -676,21 +676,24 @@
     closeStepPopup();
     const topic = appState.topics.find(t => t.id === topicId);
     if (!topic) return;
-    const existing = (topic.productionSteps || []).filter(s => date >= s.startDate && date <= (s.endDate || s.startDate));
-    const existingKeys = new Set(existing.map(s => s.key));
-    const available = getStepDefs().filter(d => !existingKeys.has(d.key));
-    if (!available.length) return;
+    const steps = topic.productionSteps || [];
+    const defs = getStepDefs();
 
     const popup = document.getElementById('step-popup');
     const title = document.getElementById('step-popup-title');
-    title.textContent = `${shortDate(date)} · 添加工序`;
+    title.textContent = `${shortDate(date)} · 放置工序`;
 
     const list = document.getElementById('step-popup-list');
-    list.innerHTML = available.map(def => `<button onclick="addStepFromPopup('${topicId}','${def.key}','${date}')" class="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-beige-100 text-left transition-colors">
-      <span class="w-3 h-3 rounded flex-shrink-0" style="background:${def.color}"></span>
-      <span class="text-sm text-coffee">${def.name}</span>
-      <span class="text-xs text-coffee-light ml-auto">${def.duration}天</span>
-    </button>`).join('');
+    list.innerHTML = defs.map(def => {
+      const existing = steps.find(s => s.key === def.key);
+      const isOnDate = existing && date >= existing.startDate && date <= (existing.endDate || existing.startDate);
+      const label = existing ? (isOnDate ? '当前在此' : `移动到 ${shortDate(date)}`) : '添加';
+      return `<button onclick="addStepFromPopup('${topicId}','${def.key}','${date}')" class="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-beige-100 text-left transition-colors ${isOnDate?'opacity-40':''}">
+        <span class="w-3 h-3 rounded flex-shrink-0" style="background:${def.color}"></span>
+        <span class="text-sm text-coffee flex-1">${def.name}</span>
+        <span class="text-xs ${existing?'text-brand':'text-coffee-light'}">${label}</span>
+      </button>`;
+    }).join('');
 
     const rect = e.currentTarget.getBoundingClientRect();
     popup.style.top = (rect.bottom + 4) + 'px';
@@ -702,10 +705,37 @@
   function addStepFromPopup(topicId, stepKey, date) {
     const topic = appState.topics.find(t => t.id === topicId);
     if (!topic) return;
-    const def = getStepDefs().find(d => d.key === stepKey);
+    const defs = getStepDefs();
+    const def = defs.find(d => d.key === stepKey);
     if (!def) return;
-    const endDate = def.duration > 0 ? addDays(date, def.duration - 1) : date;
-    topic.productionSteps.push({ key: def.key, name: def.name, startDate: date, endDate, duration: def.duration, color: def.color, done: false });
+
+    const steps = topic.productionSteps || [];
+    const existing = steps.find(s => s.key === stepKey);
+    const newEnd = def.duration > 0 ? addDays(date, def.duration - 1) : date;
+
+    if (existing) {
+      // 替换：移动已有工序到新日期
+      const oldStart = existing.startDate;
+      const delta = daysBetween(oldStart, date);
+      existing.startDate = date;
+      existing.endDate = newEnd;
+
+      // 级联：同序列中该工序之后的工序，按原相对间隔跟随移动
+      const stepIdx = defs.findIndex(d => d.key === stepKey);
+      for (let i = stepIdx + 1; i < defs.length; i++) {
+        const nextDef = defs[i];
+        const nextStep = steps.find(s => s.key === nextDef.key);
+        if (!nextStep) continue;
+        const newStart = addDays(nextStep.startDate, delta);
+        const dur = daysBetween(nextStep.startDate, nextStep.endDate);
+        nextStep.startDate = newStart;
+        nextStep.endDate = addDays(newStart, dur);
+      }
+    } else {
+      // 新增：插入新工序
+      topic.productionSteps.push({ key: def.key, name: def.name, startDate: date, endDate: newEnd, duration: def.duration, color: def.color, done: false });
+    }
+
     markUpdated(topic);
     saveData(); closeStepPopup(); renderAll();
   }

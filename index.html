@@ -1570,7 +1570,7 @@
             <div class="text-xs ${isToday?'text-brand font-bold':isInRange?'text-coffee':'text-coffee-light'} mb-1">${day}</div>`;
 
           daySteps.forEach(s => {
-            html += `<div class="text-xs truncate rounded px-1 mb-0.5 text-white" style="background:${s.color}">${s.name}</div>`;
+            html += `<div class="text-xs mb-0.5 pl-1" style="border-left:3px solid ${s.color}">${s.name}</div>`;
           });
 
           if (hasNote) {
@@ -1686,19 +1686,27 @@
     if (cb.shootStart && cb.shootEnd) infoItems.push(['#A5C8E1', '拍摄段', `${cb.shootStart} ~ ${cb.shootEnd}`]);
 
     if (infoItems.length) {
-      html += `<div style="margin-bottom:16px;font-size:13px;line-height:22px">`;
-      infoItems.forEach(([color, label, value]) => {
-        html += `<span style="display:inline-block;vertical-align:middle;margin-right:28px;margin-bottom:4px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};vertical-align:middle;margin-right:6px"></span><span style="display:inline-block;vertical-align:middle;color:#A3968C;width:52px">${label}</span><span style="display:inline-block;vertical-align:middle;font-weight:500">${escapeHtml(value)}</span></span>`;
-      });
+      const half = Math.ceil(infoItems.length / 2);
+      html += `<div style="margin-bottom:16px;font-size:13px;line-height:24px">`;
+      for (let i = 0; i < half; i++) {
+        const left = infoItems[i];
+        const right = infoItems[i + half];
+        html += `<div style="display:flex">`;
+        html += `<div style="width:50%;display:flex"><span style="color:#A3968C;width:60px;flex-shrink:0">${left[1]}</span><span style="font-weight:500">${escapeHtml(left[2])}</span></div>`;
+        if (right) {
+          html += `<div style="width:50%;display:flex"><span style="color:#A3968C;width:60px;flex-shrink:0">${right[1]}</span><span style="font-weight:500">${escapeHtml(right[2])}</span></div>`;
+        }
+        html += `</div>`;
+      }
       html += `</div>`;
     }
 
-    // ── 工序时间轴 ──
-    html += `<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;font-size:12px">`;
-    steps.forEach(s => {
+    // ── 工序时间轴（纯文字）──
+    html += `<div style="margin-bottom:20px;font-size:12px;color:#6B5B50">`;
+    html += steps.map(s => {
       const range = s.startDate === (s.endDate || s.startDate) ? shortDate(s.startDate) : `${shortDate(s.startDate)}~${shortDate(s.endDate || s.startDate)}`;
-      html += `<div style="display:flex;align-items:center;gap:4px"><div style="width:10px;height:10px;border-radius:2px;background:${s.color};flex-shrink:0"></div><span>${s.name} ${range}</span></div>`;
-    });
+      return `${s.name} ${range}`;
+    }).join(' · ');
     html += `</div>`;
 
     // ── 日历网格容器 ──
@@ -1739,8 +1747,8 @@
             const dsNote = notes[ds];
             mh += `<td style="padding:${CELL_PAD}px;border:1px solid #F0EDE6;width:${CELL}px;vertical-align:top;box-sizing:border-box">`;
             mh += `<div style="font-size:11px;color:#4A3C31;margin-bottom:3px">${cd}</div>`;
-            dsSteps.forEach(s => mh += `<div style="font-size:10px;color:white;background:${s.color};border-radius:3px;padding:2px 5px;margin-bottom:2px;white-space:nowrap;line-height:16px">${s.name}</div>`);
-            if (dsNote) mh += `<div style="font-size:10px;color:#A3968C;line-height:14px;margin-top:2px;word-break:break-all">${escapeHtml(dsNote)}</div>`;
+            dsSteps.forEach(s => mh += `<div style="font-size:10px;padding:2px 0 2px 5px;margin-bottom:2px;border-left:3px solid ${s.color};line-height:14px;color:#4A3C31">${s.name}</div>`);
+            if (dsNote) mh += `<div style="font-size:10px;color:#A3968C;line-height:14px;margin-top:2px;padding-left:5px">${escapeHtml(dsNote)}</div>`;
             mh += '</td>';
             cd++;
           }

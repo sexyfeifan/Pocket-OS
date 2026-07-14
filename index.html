@@ -1244,7 +1244,7 @@
     html += `<div>
       <h4 class="text-xs text-coffee-light mb-2">前置准备 · 可编辑</h4>
       <div class="flex items-center gap-2 mb-2">
-        <input id="prep-input-${topic.id}" type="text" placeholder="增加一项要准备或学习的事" class="todo-input flex-1 text-sm border border-beige-200 rounded-lg px-3 py-2 bg-beige-50 text-coffee placeholder-coffee-light/50" onkeydown="if(event.key==='Enter'){addPrepFromInput('${topic.id}')}">
+        <input id="prep-input-${topic.id}" type="text" placeholder="增加项目备注" class="todo-input flex-1 text-sm border border-beige-200 rounded-lg px-3 py-2 bg-beige-50 text-coffee placeholder-coffee-light/50" onkeydown="if(event.key==='Enter'){addPrepFromInput('${topic.id}')}">
         <button onclick="addPrepFromInput('${topic.id}')" class="w-9 h-9 bg-brand text-white rounded-lg flex items-center justify-center hover:bg-brand-dark transition-colors flex-shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg></button>
       </div>
       <div class="space-y-1.5" id="prep-list-${topic.id}">`;
@@ -1337,7 +1337,13 @@
       </div>`;
     });
 
-    html += `</div></div>`;
+    html += `</div>`;
+    // 添加新工序按钮
+    html += `<button onclick="addCustomStep('${topic.id}')" class="mt-2 flex items-center gap-1.5 text-xs text-brand hover:text-brand-dark transition-colors">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      添加工序
+    </button>`;
+    html += `</div>`;
 
     if (conflict.hasConflict) {
       html += `<div class="bg-danger-bg text-danger-text border border-danger-border rounded-lg px-4 py-3 text-sm">当前发布日期倒排后有任务落在时间轴开始前；如果尚未完成，需要延后发布日期或压缩流程。</div>`;
@@ -1762,11 +1768,6 @@
         </label>`;
       });
     html += `</div>`;
-    // 添加新工序按钮
-    html += `<button onclick="addCustomStep('${topic.id}')" class="mt-2 flex items-center gap-1.5 text-xs text-brand hover:text-brand-dark transition-colors">
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-      添加工序
-    </button>`;
     html += `</div>`;
     });
 

@@ -9,7 +9,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --production
 
 COPY server.js index.html canbox.html ./
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data/topics
 
 ENV PORT=8080
 EXPOSE 8080

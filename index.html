@@ -546,15 +546,105 @@
 
   function markUpdated(topic) { topic.updatedAt = nowISO(); }
 
+  // ── 多点同步：按选题分别保存 ──
+  let _dirtyTopics = new Set();
+  let _settingsDirty = false;
+  let saveAbort = null;
+
   function saveData() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
       appState.lastModified = nowISO();
       localStorage.setItem('pocket_os_backup', JSON.stringify(appState));
+
+      // 保存设置
+      if (_settingsDirty) {
+        _settingsDirty = false;
+        try { await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(appState.settings) }); } catch {}
+      }
+
+      // 按选题分别保存
       if (saveAbort) saveAbort.abort();
       saveAbort = new AbortController();
-      try { await fetch('/api/data', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(appState), signal: saveAbort.signal }); } catch (e) {}
+      const signal = saveAbort.signal;
+
+      for (const topic of appState.topics) {
+        try {
+          const res = await fetch(`/api/topic/${topic.id}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(topic), signal
+          });
+          if (res.status === 409) {
+            const data = await res.json();
+            // 冲突：静默使用服务端版本 +1
+            topic._version = data.serverVersion;
+            const retry = await fetch(`/api/topic/${topic.id}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(topic), signal
+            });
+            if (retry.ok) { const rd = await retry.json(); topic._version = rd._version; }
+          } else if (res.ok) {
+            const data = await res.json();
+            topic._version = data._version;
+          }
+        } catch (e) { if (e.name !== 'AbortError') {} }
+      }
     }, 300);
+  }
+
+  // 标记选题为脏数据
+  function markDirty(topicId) { _dirtyTopics.add(topicId); }
+  function markSettingsDirty() { _settingsDirty = true; }
+
+  // ── SSE 实时同步 ──
+  let _sseSource = null;
+  function connectSSE() {
+    if (_sseSource) { _sseSource.close(); _sseSource = null; }
+    try {
+      _sseSource = new EventSource('/api/events');
+      _sseSource.addEventListener('topic-update', (e) => {
+        const data = JSON.parse(e.data);
+        // 如果当前正在编辑该选题，不覆盖
+        if (currentView === 'edit' && selectedTopicId === data.id) return;
+        // 拉取该选题最新数据
+        fetch(`/api/data`).then(r => r.json()).then(latest => {
+          const serverTopic = latest.topics?.find(t => t.id === data.id);
+          if (serverTopic) {
+            const idx = appState.topics.findIndex(t => t.id === data.id);
+            if (idx >= 0) { Object.assign(appState.topics[idx], serverTopic); }
+            else { appState.topics.push(serverTopic); }
+            renderAll();
+          }
+        }).catch(() => {});
+      });
+      _sseSource.addEventListener('topic-delete', (e) => {
+        const data = JSON.parse(e.data);
+        appState.topics = appState.topics.filter(t => t.id !== data.id);
+        if (selectedTopicId === data.id) { selectedTopicId = appState.topics[0]?.id || null; if (currentView === 'edit') switchView('calendar'); }
+        renderAll();
+      });
+      _sseSource.addEventListener('settings-update', () => {
+        fetch('/api/data').then(r => r.json()).then(latest => {
+          if (latest.settings) { appState.settings = latest.settings; renderAll(); }
+        }).catch(() => {});
+      });
+      _sseSource.addEventListener('full-sync', () => {
+        // 全量同步：拉取最新数据，只更新非编辑中的选题
+        fetch('/api/data').then(r => r.json()).then(latest => {
+          if (latest.topics) {
+            latest.topics.forEach(serverTopic => {
+              if (currentView === 'edit' && selectedTopicId === serverTopic.id) return;
+              const idx = appState.topics.findIndex(t => t.id === serverTopic.id);
+              if (idx >= 0) Object.assign(appState.topics[idx], serverTopic);
+              else appState.topics.push(serverTopic);
+            });
+          }
+          if (latest.settings) appState.settings = latest.settings;
+          renderAll();
+        }).catch(() => {});
+      });
+      _sseSource.onerror = () => { setTimeout(connectSSE, 5000); };
+    } catch {}
   }
 
   function exportData() {
@@ -2528,7 +2618,7 @@
   }
 
   // ── 初始化 ──
-  loadData().then(() => switchView('calendar'));
+  loadData().then(() => { switchView('calendar'); connectSSE(); });
   document.addEventListener('keydown', e => {
     if ((e.metaKey||e.ctrlKey) && e.key==='s') { e.preventDefault(); saveData(); }
     if (e.key==='n' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) { e.preventDefault(); createTopic(); }

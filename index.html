@@ -518,6 +518,17 @@
     return (topic.productionSteps || []).filter(s => !s.cleared);
   }
 
+  function sortStepsByDefaultOrder(steps) {
+    const defs = getStepDefs();
+    const orderMap = {};
+    defs.forEach((d, i) => orderMap[d.key] = i);
+    steps.sort((a, b) => {
+      const ia = orderMap[a.key] !== undefined ? orderMap[a.key] : 999;
+      const ib = orderMap[b.key] !== undefined ? orderMap[b.key] : 999;
+      return ia - ib;
+    });
+  }
+
   function calcProgress(t) {
     const allItems = [...(t.preparationTasks || []), ...(t.productionSteps || [])];
     if (!allItems.length) return 0;
@@ -552,6 +563,7 @@
           t.productionSteps.push({ key: def.key, name: def.name, startDate: '', endDate: '', duration: def.duration, color: def.color, done: false, cleared: true });
         }
       });
+      sortStepsByDefaultOrder(t.productionSteps);
     });
     renderAll();
     loadSystemInfo();
@@ -984,6 +996,7 @@
       }
     } else {
       topic.productionSteps.push({ key: def.key, name: def.name, startDate: date, endDate: date, duration: 1, color: def.color, done: false });
+      sortStepsByDefaultOrder(topic.productionSteps);
     }
 
     markUpdated(topic);
@@ -2607,6 +2620,7 @@
         }
       }
     });
+    sortStepsByDefaultOrder(topic.productionSteps);
 
     // R03: 解析到发布工序时同步更新 publishDate
     if (tmlParsed.steps.publish) {

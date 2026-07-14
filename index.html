@@ -831,7 +831,8 @@
 
       html += `<tr><td class="gantt-sticky bg-white p-2 border-b border-r border-beige-200 cursor-pointer hover:bg-beige-50" style="min-width:${COL_W}px;width:${COL_W}px" onclick="selectTopic('${topic.id}')">
         <div class="flex items-center gap-1">${conflict.hasConflict?'<svg class="w-3.5 h-3.5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>':''}<span class="text-sm font-medium truncate">${escapeHtml(topic.title)}</span></div>
-        <div class="text-xs text-coffee-light mt-0.5">${topic.category||''} · ${progress}%</div></td>`;
+        <div class="text-xs text-coffee-light mt-0.5">${topic.category||''} · ${progress}%</div>
+        ${topic.publishDate ? `<div class="text-xs text-brand font-medium mt-0.5">发布 ${shortDate(topic.publishDate)}</div>` : ''}</td>`;
 
       html += `<td colspan="${dates.length}" class="border-b border-beige-200 p-0">`;
       const ROW_BASE = 52;
@@ -2372,6 +2373,8 @@
     { keys: ['bco', 'b copy', '精剪', 'b拷', 'b拷贝', '终剪', 'b_copy'], stepKey: 'bcopy' },
     { keys: ['发布', 'publish', '发片', '上线'], stepKey: 'publish' },
   ];
+  // TML 备注识别关键词（匹配到这些词的内容自动归为备注，不作为工序）
+  const TML_NOTE_KEYWORDS = ['粗剪', '探店清单', '文案', '选题', '大纲', '封面', '调色', '字幕', 'vo', '配音', '混音', '素材', '转场', '特效', '审片', '修改', '反馈', '确认', '沟通', '对脚本', '堪景', '置景', '道具', '造型', '妆发', '收音', '配音']
 
   function parseTmlDate(dateStr, currentYear) {
     // 处理各种日期格式: 7.15, 7/15, 7月15日, 7-15
@@ -2452,6 +2455,9 @@
       const nameLower = namePart.toLowerCase();
       const matched = TML_STEP_MAP.find(m => m.keys.some(k => nameLower.includes(k)));
 
+      // 检查是否为备注关键词（优先级高于工序匹配）
+      const isNoteKeyword = TML_NOTE_KEYWORDS.some(k => nameLower.includes(k));
+
       // 解析日期
       const isRange = datePart.includes('-') || datePart.includes('–');
       let startDate, endDate;
@@ -2469,7 +2475,7 @@
 
       lastDate = startDate;
 
-      if (matched) {
+      if (matched && !isNoteKeyword) {
         steps[matched.stepKey] = { startDate, endDate, name: namePart };
       } else {
         if (!notes[startDate]) notes[startDate] = [];

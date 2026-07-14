@@ -72,6 +72,8 @@
     .todo-input:focus { box-shadow: none; }
     .wf-row { transition: background 0.15s; }
     .wf-row:hover { background: #FAF7F2; }
+    .wf-row.cleared { opacity: 0.45; }
+    .wf-row.cleared:hover { opacity: 0.7; }
     .wf-row[draggable="true"] { cursor: grab; }
     .wf-row[draggable="true"]:active { cursor: grabbing; }
     .step-popup { position: absolute; z-index: 30; }
@@ -507,9 +509,13 @@
   function checkConflict(steps) {
     const today = todayStr();
     for (const step of steps) {
-      if (!step.done && step.endDate < today) return { hasConflict: true, message: `「${step.name}」已过期 (${step.endDate})，尚未完成。`, stepKey: step.key };
+      if (!step.done && !step.cleared && step.endDate < today) return { hasConflict: true, message: `「${step.name}」已过期 (${step.endDate})，尚未完成。`, stepKey: step.key };
     }
     return { hasConflict: false };
+  }
+
+  function getActiveSteps(topic) {
+    return (topic.productionSteps || []).filter(s => !s.cleared);
   }
 
   function calcProgress(t) {
@@ -538,6 +544,14 @@
       if (!t.category) t.category = '内容';
       if (!t.createdAt) t.createdAt = appState.lastModified || nowISO();
       if (!t.updatedAt) t.updatedAt = appState.lastModified || nowISO();
+      // 补齐被删除的默认工序（cleared 状态）
+      const defs = appState.settings.stepDefs || DEFAULT_STEP_DEFS;
+      const existingKeys = (t.productionSteps || []).map(s => s.key);
+      defs.forEach(def => {
+        if (!existingKeys.includes(def.key)) {
+          t.productionSteps.push({ key: def.key, name: def.name, startDate: '', endDate: '', duration: def.duration, color: def.color, done: false, cleared: true });
+        }
+      });
     });
     renderAll();
     loadSystemInfo();
@@ -825,8 +839,8 @@
 
     topics.forEach(topic => {
       const progress = calcProgress(topic);
-      const conflict = checkConflict(topic.productionSteps || []);
-      const blocks = buildMergedBlocks(topic.productionSteps || [], dates);
+      const conflict = checkConflict(getActiveSteps(topic));
+      const blocks = buildMergedBlocks(getActiveSteps(topic), dates);
 
       html += `<tr><td class="gantt-sticky bg-white p-2 border-b border-r border-beige-200 cursor-pointer hover:bg-beige-50" style="min-width:${COL_W}px;width:${COL_W}px" onclick="selectTopic('${topic.id}')">
         <div class="flex items-center gap-1">${conflict.hasConflict?'<svg class="w-3.5 h-3.5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>':''}<span class="text-sm font-medium truncate">${escapeHtml(topic.title)}</span></div>
@@ -934,9 +948,10 @@
 
     if (existing) {
       const stepIdx = defs.findIndex(d => d.key === stepKey);
-      const delta = daysBetween(existing.startDate, date);
+      const delta = daysBetween(existing.startDate || date, date);
       existing.startDate = date;
       existing.endDate = newEnd;
+      existing.cleared = false;
 
       // 向后推挤
       if (delta > 0) {
@@ -1041,11 +1056,12 @@
     const step = steps.find(s => s.key === dragData.stepKey);
     if (!step || stepIdx < 0) return;
 
-    const dur = daysBetween(step.startDate, step.endDate);
+    const dur = step.cleared ? 0 : daysBetween(step.startDate, step.endDate);
     const newEnd = addDays(targetDate, dur);
-    const delta = daysBetween(step.startDate, targetDate);
+    const delta = step.cleared ? 1 : daysBetween(step.startDate, targetDate);
     step.startDate = targetDate;
     step.endDate = newEnd;
+    step.cleared = false;
     if (step.key === 'publish') topic.publishDate = targetDate;
 
     // 向后推挤：如果移动后与下一个工序接触/重叠，推走后续工序
@@ -1120,10 +1136,10 @@
     if (!appState.topics.length) { el.innerHTML = '<p class="text-xs text-coffee-light col-span-full text-center py-8">暂无选题</p>'; return; }
     el.innerHTML = sortedTopics().map(topic => {
       const progress = calcProgress(topic);
-      const conflict = checkConflict(topic.productionSteps || []);
+      const conflict = checkConflict(getActiveSteps(topic));
       const pubDate = topic.publishDate || '';
       const daysLeft = pubDate ? daysBetween(todayStr(), pubDate) : null;
-      const summarySteps = (topic.productionSteps || []).filter(s => SUMMARY_KEYS.includes(s.key));
+      const summarySteps = getActiveSteps(topic).filter(s => SUMMARY_KEYS.includes(s.key));
 
       let html = `<div id="summary-${topic.id}" class="bg-white rounded-2xl p-5 shadow-sm border border-[#EFECE6] text-coffee flex flex-col gap-3 hover:shadow-md transition-shadow">`;
       html += `<div class="flex items-start justify-between">
@@ -1202,7 +1218,7 @@
     if (!appState.topics.length) { list.innerHTML = '<p class="text-xs text-coffee-light text-center mt-8">暂无选题</p>'; return; }
     list.innerHTML = sortedTopics().map(t => {
       const progress = calcProgress(t);
-      const conflict = checkConflict(t.productionSteps || []);
+      const conflict = checkConflict(getActiveSteps(t));
       const act = t.id === selectedTopicId;
       const plats = (t.platforms || []).join(' · ');
       return `<div onclick="selectTopic('${t.id}')" class="topic-item ${act?'active':''} rounded-lg px-3 py-2.5 mb-1 cursor-pointer relative">
@@ -1220,10 +1236,10 @@
     if (!appState.topics.length) { grid.innerHTML = ''; return; }
     grid.innerHTML = sortedTopics().map(topic => {
       const progress = calcProgress(topic);
-      const conflict = checkConflict(topic.productionSteps || []);
+      const conflict = checkConflict(getActiveSteps(topic));
       const pubDate = topic.publishDate || '';
       const daysLeft = pubDate ? daysBetween(todayStr(), pubDate) : null;
-      const steps = topic.productionSteps || [];
+      const steps = getActiveSteps(topic);
       const summarySteps = steps.filter(s => SUMMARY_KEYS.includes(s.key));
 
       let html = `<div class="bg-white rounded-2xl p-5 shadow-sm border border-[#EFECE6] text-coffee flex flex-col gap-3 hover:shadow-md transition-shadow">`;
@@ -1277,7 +1293,7 @@
     // 编辑卡片
     const el = document.getElementById('edit-card-content');
     const progress = calcProgress(topic);
-    const conflict = checkConflict(topic.productionSteps || []);
+    const conflict = checkConflict(getActiveSteps(topic));
     const isEditing = editingTitleId === topic.id;
     const pubDate = topic.publishDate || '';
     const daysLeft = pubDate ? daysBetween(todayStr(), pubDate) : null;
@@ -1413,16 +1429,21 @@
       <div class="space-y-1">`;
 
     steps.forEach((step, idx) => {
-      const isC = conflict.hasConflict && conflict.stepKey === step.key;
-      const isRange = step.startDate !== (step.endDate || step.startDate);
-      html += `<div class="wf-row flex items-center gap-2 py-1.5 px-2 rounded group ${isC?'bg-danger-bg':''}" data-step-idx="${idx}" draggable="true" ondragstart="stepDragStart(event,'${topic.id}',${idx})" ondragover="stepDragOver(event)" ondrop="stepDrop(event,'${topic.id}',${idx})" ondragend="stepDragEnd(event)">
+      const isCleared = step.cleared;
+      const isC = !isCleared && conflict.hasConflict && conflict.stepKey === step.key;
+      const isRange = !isCleared && step.startDate !== (step.endDate || step.startDate);
+      html += `<div class="wf-row flex items-center gap-2 py-1.5 px-2 rounded group ${isCleared?'cleared':''} ${isC?'bg-danger-bg':''}" data-step-idx="${idx}" draggable="true" ondragstart="stepDragStart(event,'${topic.id}',${idx})" ondragover="stepDragOver(event)" ondrop="stepDrop(event,'${topic.id}',${idx})" ondragend="stepDragEnd(event)">
         <span class="cursor-grab text-coffee-light hover:text-coffee select-none px-0.5 flex-shrink-0" title="按住拖拽排序">⠿</span>
         <input type="checkbox" ${step.done?'checked':''} onchange="toggleStep('${topic.id}',${idx})" class="w-4 h-4 rounded accent-[#38A169]">
-        <span class="text-sm ${step.done?'line-through text-coffee-light':'text-coffee'} w-20 flex-shrink-0 truncate">${step.name}</span>
-        <input type="date" value="${step.startDate}" onchange="updateStepDate('${topic.id}',${idx},'startDate',this.value)" class="text-xs border border-beige-200 rounded px-1.5 py-0.5 bg-white ${isC?'text-danger-text font-medium':'text-coffee-light'}" style="width:110px">
-        <span class="text-xs text-beige-300">~</span>
-        <input type="date" value="${step.endDate||step.startDate}" onchange="updateStepDate('${topic.id}',${idx},'endDate',this.value)" class="text-xs border border-beige-200 rounded px-1.5 py-0.5 bg-white ${isC?'text-danger-text font-medium':'text-coffee-light'}" style="width:110px">
-        <span class="text-xs ${isRange?'text-brand':'text-beige-300'} w-10 text-right">${isRange?daysBetween(step.startDate,step.endDate||step.startDate)+'天':''}</span>
+        <span class="text-sm ${step.done?'line-through ':''}${isCleared?'text-coffee-light/60':'text-coffee'} w-20 flex-shrink-0 truncate">${step.name}</span>
+        ${isCleared
+          ? `<span class="text-xs text-coffee-light flex-1">未安排</span><button onclick="restoreStep('${topic.id}',${idx})" class="text-xs text-brand border border-brand/30 rounded px-2 py-0.5 hover:bg-brand hover:text-white transition-colors flex-shrink-0">安排日期</button>`
+          : `<input type="date" value="${step.startDate}" onchange="updateStepDate('${topic.id}',${idx},'startDate',this.value)" class="text-xs border border-beige-200 rounded px-1.5 py-0.5 bg-white ${isC?'text-danger-text font-medium':'text-coffee-light'}" style="width:110px">
+            <span class="text-xs text-beige-300">~</span>
+            <input type="date" value="${step.endDate||step.startDate}" onchange="updateStepDate('${topic.id}',${idx},'endDate',this.value)" class="text-xs border border-beige-200 rounded px-1.5 py-0.5 bg-white ${isC?'text-danger-text font-medium':'text-coffee-light'}" style="width:110px">
+            <span class="text-xs ${isRange?'text-brand':'text-beige-300'} w-10 text-right">${isRange?daysBetween(step.startDate,step.endDate||step.startDate)+'天':''}</span>
+            <button onclick="clearStep('${topic.id}',${idx})" class="opacity-0 group-hover:opacity-100 p-0.5 text-coffee-light hover:text-orange-500 transition-all flex-shrink-0" title="清除日期"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg></button>`
+        }
         <button onclick="deleteStep('${topic.id}','${step.key}')" class="opacity-0 group-hover:opacity-100 p-0.5 text-coffee-light hover:text-red-500 transition-all flex-shrink-0" title="删除工序"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
       </div>`;
     });
@@ -1552,6 +1573,28 @@
     t.productionSteps = t.productionSteps.filter(s => s.key !== stepKey);
     markUpdated(t); saveData(); logAction('step.delete', id, { step: step.name }); renderAll();
   }
+  function clearStep(id, idx) {
+    const t = appState.topics.find(t => t.id === id); if (!t || !t.productionSteps[idx]) return;
+    const step = t.productionSteps[idx];
+    step.cleared = true;
+    step._prevStart = step.startDate;
+    step._prevEnd = step.endDate;
+    step.startDate = '';
+    step.endDate = '';
+    markUpdated(t); saveData(); logAction('step.clear', id, { step: step.name }); renderAll();
+  }
+  function restoreStep(id, idx) {
+    const t = appState.topics.find(t => t.id === id); if (!t || !t.productionSteps[idx]) return;
+    const step = t.productionSteps[idx];
+    // 设置一个默认日期：发布日前 offset 天，或今天+3天
+    const defaultDate = t.publishDate ? addDays(t.publishDate, -3) : addDays(todayStr(), 3);
+    step.cleared = false;
+    step.startDate = step._prevStart || defaultDate;
+    step.endDate = step._prevEnd || step.startDate;
+    delete step._prevStart;
+    delete step._prevEnd;
+    markUpdated(t); saveData(); logAction('step.restore', id, { step: step.name }); renderAll();
+  }
   const CUSTOM_STEP_COLORS = ['#D4A574','#A3D9A5','#A5C8E1','#F2D98B','#E8C97A','#C8A2E8','#D9A5E1','#E1A5A5','#B8D4E3','#85CDCA','#E8A87C','#7EB5C4'];
   function addCustomStep(id) {
     const t = appState.topics.find(t => t.id === id); if (!t) return;
@@ -1608,8 +1651,10 @@
   }
   function updateStepDate(id, idx, field, value) {
     const t = appState.topics.find(t => t.id === id); if (!t || !t.productionSteps[idx]) return;
-    t.productionSteps[idx][field] = value;
-    if (t.productionSteps[idx].endDate < t.productionSteps[idx].startDate) t.productionSteps[idx].endDate = t.productionSteps[idx].startDate;
+    const step = t.productionSteps[idx];
+    step[field] = value;
+    if (step.cleared) step.cleared = false;
+    if (step.endDate < step.startDate) step.endDate = step.startDate;
     markUpdated(t); saveData(); renderEditPage();
   }
   function rescheduleTopic(id) {
@@ -1985,7 +2030,7 @@
     title.textContent = `${projectCalYear}年 ${projectCalMonth + 1}月`;
 
     const cal = document.getElementById('project-calendar');
-    const steps = topic.productionSteps || [];
+    const steps = getActiveSteps(topic);
     const notes = topic.notes || {};
     const today = todayStr();
 
@@ -2061,7 +2106,7 @@
     // 归位到拍摄月或第一个工序月或发布月
     let targetDate = null;
     if (topic.canboxImport?.shootStart) targetDate = topic.canboxImport.shootStart;
-    else if (topic.productionSteps?.length) targetDate = topic.productionSteps[0].startDate;
+    else if (topic.productionSteps?.length) { const active = getActiveSteps(topic); targetDate = active.length ? active[0].startDate : null; }
     else if (topic.publishDate) targetDate = topic.publishDate;
     if (targetDate) {
       const d = new Date(targetDate + 'T00:00:00');
@@ -2122,7 +2167,7 @@
     if (!topic) return;
 
     const cb = topic.canboxImport || {};
-    const steps = topic.productionSteps || [];
+    const steps = getActiveSteps(topic);
     const notes = topic.notes || {};
     const pubDate = topic.publishDate || '';
 
@@ -2281,7 +2326,7 @@
   function exportTml(topicId) {
     const topic = appState.topics.find(t => t.id === topicId);
     if (!topic) return;
-    const steps = topic.productionSteps || [];
+    const steps = getActiveSteps(topic);
     const notes = topic.notes || {};
     const lines = [];
     const usedDates = new Set();
@@ -2542,8 +2587,24 @@
       if (existing) {
         existing.startDate = s.startDate;
         existing.endDate = s.endDate;
+        existing.cleared = false;
       } else if (def) {
-        topic.productionSteps.push({ key: def.key, name: def.name, startDate: s.startDate, endDate: s.endDate, duration: daysBetween(s.startDate, s.endDate) + 1, color: def.color, done: false });
+        topic.productionSteps.push({ key: def.key, name: def.name, startDate: s.startDate, endDate: s.endDate, duration: daysBetween(s.startDate, s.endDate) + 1, color: def.color, done: false, cleared: false });
+      }
+    });
+
+    // 未匹配到的默认工序 → 设为 cleared
+    const matchedKeys = Object.keys(tmlParsed.steps);
+    defs.forEach(def => {
+      if (!matchedKeys.includes(def.key)) {
+        const existing = (topic.productionSteps || []).find(s => s.key === def.key);
+        if (existing) {
+          existing.cleared = true;
+          existing.startDate = '';
+          existing.endDate = '';
+        } else {
+          topic.productionSteps.push({ key: def.key, name: def.name, startDate: '', endDate: '', duration: def.duration, color: def.color, done: false, cleared: true });
+        }
       }
     });
 

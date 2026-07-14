@@ -72,6 +72,8 @@
     .todo-input:focus { box-shadow: none; }
     .wf-row { transition: background 0.15s; }
     .wf-row:hover { background: #FAF7F2; }
+    .wf-row[draggable="true"] { cursor: grab; }
+    .wf-row[draggable="true"]:active { cursor: grabbing; }
     .step-popup { position: absolute; z-index: 30; }
     .date-cell { cursor: pointer; }
     .date-cell:hover { background: rgba(179,125,86,0.06); }
@@ -445,7 +447,7 @@
   async function logAction(action, topicId, detail) {
     if (!_fp) { try { _fp = await getBrowserFingerprint(); } catch { _fp = 'fp_unknown'; } }
     const entry = { action, topicId, detail, fingerprint: _fp, userAgent: navigator.userAgent, timestamp: new Date().toISOString() };
-    try { if (navigator.sendBeacon) navigator.sendBeacon('/api/log', JSON.stringify(entry)); else fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry) }); } catch {}
+    try { await fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry) }); } catch {}
   }
 
   function reverseSchedule(publishDate, stepDefs) {
@@ -752,8 +754,9 @@
         const isToday = d === todayFmt;
         const dow = new Date(d+'T00:00:00').getDay();
         const isWe = dow === 0 || dow === 6;
-        const hasNote = topic.notes && topic.notes[d];
-        html += `<div class="absolute date-cell ${isToday?'bg-brand/5':isWe?'bg-gray-50/50':''}" style="left:${i*CELL_W}px;top:0;width:${CELL_W}px;height:${rowH}px;border-right:1px solid #EFECE6;${showDateClick?'':'pointer-events:none'}" data-date="${d}" data-topic="${topic.id}" onclick="onDateCellClick(event,'${topic.id}','${d}')" ondragover="ganttDragOver(event)" ondrop="ganttDrop(event,'${topic.id}','${d}')" ondragleave="this.classList.remove('drag-over')">${hasNote?'<div style="position:absolute;top:2px;right:4px;width:6px;height:6px;border-radius:50%;background:#B37D56" title="'+escapeHtml(hasNote).slice(0,20)+'"></div>':''}</div>`;
+        const note = topic.notes && topic.notes[d];
+        const noteHtml = note ? `<div style="position:absolute;bottom:2px;left:2px;right:2px;background:#FFF3CD;border:1px solid #F0E6D0;border-radius:3px;padding:1px 3px;font-size:9px;color:#7B6B5A;line-height:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:1;pointer-events:none" title="${escapeHtml(note)}">${escapeHtml(note).slice(0,10)}</div>` : '';
+        html += `<div class="absolute date-cell ${isToday?'bg-brand/5':isWe?'bg-gray-50/50':''}" style="left:${i*CELL_W}px;top:0;width:${CELL_W}px;height:${rowH}px;border-right:1px solid #EFECE6;${showDateClick?'':'pointer-events:none'}" data-date="${d}" data-topic="${topic.id}" onclick="onDateCellClick(event,'${topic.id}','${d}')" ondragover="ganttDragOver(event)" ondrop="ganttDrop(event,'${topic.id}','${d}')" ondragleave="this.classList.remove('drag-over')">${noteHtml}</div>`;
       });
 
       // 合并色块（按 lane 分层）
@@ -1322,8 +1325,8 @@
     steps.forEach((step, idx) => {
       const isC = conflict.hasConflict && conflict.stepKey === step.key;
       const isRange = step.startDate !== (step.endDate || step.startDate);
-      html += `<div class="wf-row flex items-center gap-2 py-1.5 px-2 rounded group ${isC?'bg-danger-bg':''}" data-step-idx="${idx}" draggable="false">
-        <span class="cursor-grab text-coffee-light hover:text-coffee select-none px-0.5 flex-shrink-0" onmousedown="stepDragStart(event,'${topic.id}',${idx})" title="按住拖拽排序">⠿</span>
+      html += `<div class="wf-row flex items-center gap-2 py-1.5 px-2 rounded group ${isC?'bg-danger-bg':''}" data-step-idx="${idx}" draggable="true" ondragstart="stepDragStart(event,'${topic.id}',${idx})" ondragover="stepDragOver(event)" ondrop="stepDrop(event,'${topic.id}',${idx})" ondragend="stepDragEnd(event)">
+        <span class="cursor-grab text-coffee-light hover:text-coffee select-none px-0.5 flex-shrink-0" title="按住拖拽排序">⠿</span>
         <input type="checkbox" ${step.done?'checked':''} onchange="toggleStep('${topic.id}',${idx})" class="w-4 h-4 rounded accent-[#38A169]">
         <span class="text-sm ${step.done?'line-through text-coffee-light':'text-coffee'} w-20 flex-shrink-0 truncate">${step.name}</span>
         <input type="date" value="${step.startDate}" onchange="updateStepDate('${topic.id}',${idx},'startDate',this.value)" class="text-xs border border-beige-200 rounded px-1.5 py-0.5 bg-white ${isC?'text-danger-text font-medium':'text-coffee-light'}" style="width:110px">
@@ -1498,36 +1501,29 @@
   let stepDragIdx = null;
   let stepDragTopicId = null;
   function stepDragStart(e, topicId, idx) {
-    e.preventDefault();
     stepDragIdx = idx;
     stepDragTopicId = topicId;
-    const row = e.target.closest('.wf-row');
-    if (row) { row.setAttribute('draggable', 'true'); row.style.opacity = '0.5'; row.style.background = 'rgba(179,125,86,0.1)'; }
-    document.querySelectorAll('.wf-row').forEach(r => {
-      r.addEventListener('dragover', stepDragOver);
-      r.addEventListener('drop', stepDrop);
-      r.addEventListener('dragend', stepDragEnd);
-    });
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', idx);
+    e.target.closest('.wf-row').style.opacity = '0.4';
   }
   function stepDragOver(e) {
     e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
     e.currentTarget.style.borderTop = '2px solid #B37D56';
   }
-  function stepDrop(e) {
+  function stepDrop(e, topicId, targetIdx) {
     e.preventDefault();
     e.currentTarget.style.borderTop = '';
-    const targetIdx = parseInt(e.currentTarget.dataset.stepIdx);
     if (stepDragIdx === null || stepDragIdx === targetIdx || !stepDragTopicId) return;
     const t = appState.topics.find(t => t.id === stepDragTopicId);
     if (!t) return;
     const [moved] = t.productionSteps.splice(stepDragIdx, 1);
     t.productionSteps.splice(targetIdx, 0, moved);
-    // 以 publishDate 为锚点重新倒排，保留完成状态
     if (t.publishDate) {
       const doneMap = {}; t.productionSteps.forEach(s => { doneMap[s.key] = s.done; });
       const newSteps = reverseSchedule(t.publishDate);
       newSteps.forEach(ns => { if (doneMap[ns.key]) ns.done = true; });
-      // 保留不在标准工序中的自定义工序
       const customKeys = t.productionSteps.filter(s => !newSteps.find(ns => ns.key === s.key)).map(s => s.key);
       const customSteps = t.productionSteps.filter(s => customKeys.includes(s.key));
       t.productionSteps = [...newSteps, ...customSteps];
@@ -1535,16 +1531,10 @@
     markUpdated(t); saveData(); logAction('step.reorder', t.id, { from: stepDragIdx, to: targetIdx });
     renderAll();
   }
-  function stepDragEnd() {
+  function stepDragEnd(e) {
     stepDragIdx = null;
     stepDragTopicId = null;
-    document.querySelectorAll('.wf-row').forEach(r => {
-      r.style.opacity = ''; r.style.background = ''; r.style.borderTop = '';
-      r.setAttribute('draggable', 'false');
-      r.removeEventListener('dragover', stepDragOver);
-      r.removeEventListener('drop', stepDrop);
-      r.removeEventListener('dragend', stepDragEnd);
-    });
+    document.querySelectorAll('.wf-row').forEach(r => { r.style.opacity = ''; r.style.borderTop = ''; });
   }
 
   // ── 设置弹窗 ──
@@ -2249,7 +2239,7 @@
     { keys: ['拍摄', '拍', 'shoot', '拍摄日'], stepKey: 'shoot' },
     { keys: ['aco', 'a copy', '粗剪', 'a拷', 'a拷贝', 'a_copy'], stepKey: 'acopy' },
     { keys: ['bco', 'b copy', '精剪', 'b拷', 'b拷贝', '终剪', 'b_copy'], stepKey: 'bcopy' },
-    { keys: ['发布', 'publish', '发', '上线'], stepKey: 'publish' },
+    { keys: ['发布', 'publish', '发片', '上线'], stepKey: 'publish' },
   ];
 
   function parseTmlDate(dateStr, currentYear) {

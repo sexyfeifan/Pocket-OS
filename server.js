@@ -83,6 +83,12 @@ app.post('/api/log', async (req, res) => {
     const entry = req.body;
     entry.timestamp = entry.timestamp || new Date().toISOString();
     entry.ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || '';
+    // 解析设备信息
+    const ua = entry.userAgent || '';
+    const browser = ua.match(/(Chrome|Firefox|Safari|Edge|Opera)\/?[\d.]+/i)?.[0] || ua.match(/(Mozilla\/[\d.]+)/)?.[0] || '未知';
+    const os = ua.match(/(Mac OS X|Windows|Linux|Android|iOS)[^;)]*/i)?.[0] || ua.match(/\(([^)]+)\)/)?.[1] || '未知';
+    const mobile = /Mobile|Android|iPhone|iPad/i.test(ua);
+    entry.device = { browser: browser.trim(), os: os.trim(), mobile };
     const date = entry.timestamp.slice(0, 10);
     const logFile = getLogFilePath(date);
     let logs = [];

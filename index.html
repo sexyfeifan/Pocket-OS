@@ -1290,19 +1290,19 @@
           <button onclick="unlinkCanbox('${topic.id}')" class="text-coffee-light hover:text-red-500" title="解除绑定"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
         </div>
         <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-          ${cb.location ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#6BA3BE] flex-shrink-0"></span><span class="text-coffee-light">拍摄地</span> <span class="font-bold text-coffee">${escapeHtml(cb.location)}</span></div>` : ''}
-          ${cb.type ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#C8A2E8] flex-shrink-0"></span><span class="text-coffee-light">类型</span> <span class="font-bold text-coffee">${escapeHtml(cb.type)}</span></div>` : ''}
-          ${cb.shootStart && cb.shootEnd ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#A5C8E1] flex-shrink-0"></span><span class="text-coffee-light">拍摄段</span> <span class="font-bold text-coffee">${cb.segments && cb.segments.length > 1 ? cb.segments.map(s => s.start === s.end ? shortDate(s.start) : shortDate(s.start)+'~'+shortDate(s.end)).join(', ') : cb.shootStart + ' ~ ' + cb.shootEnd}</span></div>` : ''}
-          ${cb.director ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#E8A87C] flex-shrink-0"></span><span class="text-coffee-light">导演</span> <span class="font-bold text-coffee">${escapeHtml(cb.director)}</span></div>` : ''}
-          ${cb.photographer ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#85CDCA] flex-shrink-0"></span><span class="text-coffee-light">摄影</span> <span class="font-bold text-coffee">${escapeHtml(cb.photographer)}</span></div>` : ''}
-          ${cb.production ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#D5A5E1] flex-shrink-0"></span><span class="text-coffee-light">制片</span> <span class="font-bold text-coffee">${escapeHtml(cb.production)}</span></div>` : ''}
-          ${cb.rd ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#A3D9A5] flex-shrink-0"></span><span class="text-coffee-light">研发</span> <span class="font-bold text-coffee">${escapeHtml(cb.rd)}</span></div>` : ''}
-          ${cb.business ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#F2D98B] flex-shrink-0"></span><span class="text-coffee-light">商务</span> <span class="font-bold text-coffee">${escapeHtml(cb.business)}</span></div>` : ''}
-          ${cb.audio ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#E1A5A5] flex-shrink-0"></span><span class="text-coffee-light">收音</span> <span class="font-bold text-coffee">${escapeHtml(cb.audio)}</span></div>` : ''}
-          ${cb.operational ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#B8D4E3] flex-shrink-0"></span><span class="text-coffee-light">运营</span> <span class="font-bold text-coffee">${escapeHtml(cb.operational)}</span></div>` : ''}
-          ${cb.laodao ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#B37D56] flex-shrink-0"></span><span class="font-bold text-brand">老刀出镜</span></div>` : ''}
-          ${cb.isAdvertiser ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#D4A574] flex-shrink-0"></span><span class="text-coffee-light">广告商单</span> <span class="font-bold text-coffee">是</span>${cb.advertiserNo ? ` <span class="text-coffee-light">(${escapeHtml(cb.advertiserNo)})</span>` : ''}</div>` : ''}
-          ${cb.orientations && cb.orientations.length ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#7EB5C4] flex-shrink-0"></span><span class="text-coffee-light">拍摄方向</span> <span class="font-bold text-coffee">${cb.orientations.join(', ')}</span></div>` : ''}
+          ${cb.location ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#6BA3BE] flex-shrink-0"></span><span class="text-coffee-light">拍摄地</span> <span class="font-medium text-coffee">${escapeHtml(cb.location)}</span></div>` : ''}
+          ${cb.type ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#C8A2E8] flex-shrink-0"></span><span class="text-coffee-light">类型</span> <span class="font-medium text-coffee">${escapeHtml(cb.type)}</span></div>` : ''}
+          ${cb.shootStart && cb.shootEnd ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#A5C8E1] flex-shrink-0"></span><span class="text-coffee-light">拍摄段</span> <span class="font-medium text-coffee">${cb.segments && cb.segments.length > 1 ? cb.segments.map(s => s.start === s.end ? shortDate(s.start) : shortDate(s.start)+'~'+shortDate(s.end)).join(', ') : cb.shootStart + ' ~ ' + cb.shootEnd}</span></div>` : ''}
+          ${cb.director ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#E8A87C] flex-shrink-0"></span><span class="text-coffee-light">导演</span> <span class="font-medium text-coffee">${escapeHtml(cb.director)}</span></div>` : ''}
+          ${cb.photographer ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#85CDCA] flex-shrink-0"></span><span class="text-coffee-light">摄影</span> <span class="font-medium text-coffee">${escapeHtml(cb.photographer)}</span></div>` : ''}
+          ${cb.production ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#D5A5E1] flex-shrink-0"></span><span class="text-coffee-light">制片</span> <span class="font-medium text-coffee">${escapeHtml(cb.production)}</span></div>` : ''}
+          ${cb.rd ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#A3D9A5] flex-shrink-0"></span><span class="text-coffee-light">研发</span> <span class="font-medium text-coffee">${escapeHtml(cb.rd)}</span></div>` : ''}
+          ${cb.business ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#F2D98B] flex-shrink-0"></span><span class="text-coffee-light">商务</span> <span class="font-medium text-coffee">${escapeHtml(cb.business)}</span></div>` : ''}
+          ${cb.audio ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#E1A5A5] flex-shrink-0"></span><span class="text-coffee-light">收音</span> <span class="font-medium text-coffee">${escapeHtml(cb.audio)}</span></div>` : ''}
+          ${cb.operational ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#B8D4E3] flex-shrink-0"></span><span class="text-coffee-light">运营</span> <span class="font-medium text-coffee">${escapeHtml(cb.operational)}</span></div>` : ''}
+          ${cb.laodao ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#B37D56] flex-shrink-0"></span><span class="font-medium text-brand">老刀出镜</span></div>` : ''}
+          ${cb.isAdvertiser ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#D4A574] flex-shrink-0"></span><span class="text-coffee-light">广告商单</span> <span class="font-medium text-coffee">是</span>${cb.advertiserNo ? ` <span class="text-coffee-light">(${escapeHtml(cb.advertiserNo)})</span>` : ''}</div>` : ''}
+          ${cb.orientations && cb.orientations.length ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#7EB5C4] flex-shrink-0"></span><span class="text-coffee-light">拍摄方向</span> <span class="font-medium text-coffee">${cb.orientations.join(', ')}</span></div>` : ''}
         </div>
       </div>`;
     } else {
@@ -1454,7 +1454,36 @@
     const step = t.productionSteps.find(s => s.key === stepKey);
     if (!step || !confirm(`删除工序「${step.name}」？`)) return;
     t.productionSteps = t.productionSteps.filter(s => s.key !== stepKey);
-    markUpdated(t); saveData(); renderAll();
+    markUpdated(t); saveData(); logAction('step.delete', id, { step: step.name }); renderAll();
+  }
+  const CUSTOM_STEP_COLORS = ['#D4A574','#A3D9A5','#A5C8E1','#F2D98B','#E8C97A','#C8A2E8','#D9A5E1','#E1A5A5','#B8D4E3','#85CDCA','#E8A87C','#7EB5C4'];
+  function addCustomStep(id) {
+    const t = appState.topics.find(t => t.id === id); if (!t) return;
+    const name = prompt('输入工序名称：');
+    if (!name || !name.trim()) return;
+    const existingKeys = t.productionSteps.map(s => s.key);
+    const usedColors = t.productionSteps.map(s => s.color);
+    const color = CUSTOM_STEP_COLORS.find(c => !usedColors.includes(c)) || CUSTOM_STEP_COLORS[existingKeys.length % CUSTOM_STEP_COLORS.length];
+    const key = 'custom_' + Date.now();
+    const pubDate = t.publishDate || todayStr();
+    // 插入到发布工序之前
+    const pubIdx = t.productionSteps.findIndex(s => s.key === 'publish');
+    const insertIdx = pubIdx >= 0 ? pubIdx : t.productionSteps.length;
+    const newStep = { key, name: name.trim(), startDate: pubDate, endDate: pubDate, duration: 1, color, done: false };
+    t.productionSteps.splice(insertIdx, 0, newStep);
+    // 重排日期
+    if (t.publishDate) {
+      let cursor = t.publishDate;
+      for (let i = t.productionSteps.length - 1; i >= 0; i--) {
+        const s = t.productionSteps[i];
+        const dur = Math.max(0, Math.ceil(s.duration || 1) - 1);
+        const end = cursor;
+        const start = (s.duration === 0) ? end : addDays(end, -dur);
+        s.startDate = start; s.endDate = end;
+        cursor = addDays(start, -1);
+      }
+    }
+    markUpdated(t); saveData(); logAction('step.add', id, { name: name.trim() }); renderAll();
   }
   function importShootDates(id) {
     const t = appState.topics.find(t => t.id === id);
@@ -1520,13 +1549,18 @@
     if (!t) return;
     const [moved] = t.productionSteps.splice(stepDragIdx, 1);
     t.productionSteps.splice(targetIdx, 0, moved);
-    if (t.publishDate) {
-      const doneMap = {}; t.productionSteps.forEach(s => { doneMap[s.key] = s.done; });
-      const newSteps = reverseSchedule(t.publishDate);
-      newSteps.forEach(ns => { if (doneMap[ns.key]) ns.done = true; });
-      const customKeys = t.productionSteps.filter(s => !newSteps.find(ns => ns.key === s.key)).map(s => s.key);
-      const customSteps = t.productionSteps.filter(s => customKeys.includes(s.key));
-      t.productionSteps = [...newSteps, ...customSteps];
+    // 按新顺序重算日期，以 publishDate 为锚点倒排，保留已有工序（不还原已删除的）
+    if (t.publishDate && t.productionSteps.length) {
+      let cursor = t.publishDate;
+      for (let i = t.productionSteps.length - 1; i >= 0; i--) {
+        const s = t.productionSteps[i];
+        const dur = Math.max(0, Math.ceil(s.duration || 1) - 1);
+        const end = cursor;
+        const start = (s.duration === 0) ? end : addDays(end, -dur);
+        s.startDate = start;
+        s.endDate = end;
+        cursor = addDays(start, -1);
+      }
     }
     markUpdated(t); saveData(); logAction('step.reorder', t.id, { from: stepDragIdx, to: targetIdx });
     renderAll();
@@ -1727,7 +1761,13 @@
           </div>
         </label>`;
       });
-      html += `</div></div>`;
+    html += `</div>`;
+    // 添加新工序按钮
+    html += `<button onclick="addCustomStep('${topic.id}')" class="mt-2 flex items-center gap-1.5 text-xs text-brand hover:text-brand-dark transition-colors">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      添加工序
+    </button>`;
+    html += `</div>`;
     });
 
     el.innerHTML = html;
@@ -2481,6 +2521,7 @@
         <span class="text-xs font-medium text-brand w-16 flex-shrink-0">${escapeHtml(label)}</span>
         <span class="text-xs text-coffee flex-1 truncate">${escapeHtml(topicName)}</span>
         <span class="text-xs text-coffee-light truncate max-w-[200px]" title="${escapeHtml(detail)}">${escapeHtml(detail).slice(0, 40)}</span>
+        <span class="text-xs text-coffee-light/60 flex-shrink-0" title="${escapeHtml(l.ip || '')}">${l.device ? (l.device.mobile ? '📱' : '💻') : ''} ${escapeHtml(l.ip || '').replace(/^::ffff:/, '').slice(0, 15)}</span>
       </div>`;
     }).join('');
   }

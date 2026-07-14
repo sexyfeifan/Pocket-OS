@@ -291,7 +291,7 @@
       html += `</div>`;
       if (cb) {
         html += `<div class="text-xs text-coffee-light space-y-0.5 px-0.5 sm:px-1">`;
-        if (cb.shootStart && cb.shootEnd) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#A5C8E1] flex-shrink-0"></span><span class="text-coffee-light">拍摄段</span> <span class="font-semibold text-coffee">${cb.shootStart} ~ ${cb.shootEnd}</span></div>`;
+        if (cb.shootStart && cb.shootEnd) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#A5C8E1] flex-shrink-0"></span><span class="text-coffee-light">拍摄段</span> <span class="font-semibold text-coffee">${cb.segments && cb.segments.length > 1 ? cb.segments.map(s => s.start === s.end ? shortDate(s.start) : shortDate(s.start)+'~'+shortDate(s.end)).join(', ') : cb.shootStart + ' ~ ' + cb.shootEnd}</span></div>`;
         if (cb.location) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#6BA3BE] flex-shrink-0"></span><span class="text-coffee-light">拍摄地</span> <span class="font-semibold text-coffee">${escapeHtml(cb.location)}</span></div>`;
         if (cb.director) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#E8A87C] flex-shrink-0"></span><span class="text-coffee-light">导演</span> <span class="font-semibold text-coffee">${escapeHtml(cb.director)}</span></div>`;
         if (cb.photographer) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#85CDCA] flex-shrink-0"></span><span class="text-coffee-light">摄影</span> <span class="font-semibold text-coffee">${escapeHtml(cb.photographer)}</span></div>`;
@@ -311,7 +311,11 @@
   }
 
   loadData().then(() => setTimeout(scrollToToday, 100));
-  setInterval(loadData, 60000);
+  let refreshTimer = setInterval(loadData, 60000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { clearInterval(refreshTimer); refreshTimer = null; }
+    else { if (!refreshTimer) refreshTimer = setInterval(loadData, 60000); loadData(); }
+  });
   </script>
 </body>
 </html>

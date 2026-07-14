@@ -126,6 +126,12 @@
       <input type="file" id="import-file" accept=".json" class="file-input-hidden" onchange="importData(event)">
     </div>
     <div id="system-info" class="px-3 py-2 border-t border-beige-200 text-xs text-coffee-light space-y-0.5"></div>
+    <div class="px-3 pb-3 border-t border-beige-200">
+      <button onclick="openLogViewer()" class="w-full py-1.5 text-xs text-coffee-light hover:text-coffee border border-beige-300 rounded-lg hover:bg-beige-200 transition-colors flex items-center justify-center gap-1">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        操作日志
+      </button>
+    </div>
   </aside>
 
   <!-- 主内容区 -->
@@ -297,6 +303,34 @@
   <!-- 分类选择下拉 -->
   <div id="category-dropdown" class="category-dropdown hidden bg-white rounded-lg shadow-lg border border-beige-200 py-1 min-w-[120px]"></div>
 
+  <!-- 操作日志弹窗 -->
+  <div id="log-modal" class="fixed inset-0 z-50 hidden">
+    <div class="modal-overlay absolute inset-0" onclick="closeLogViewer()"></div>
+    <div class="absolute inset-4 md:inset-y-6 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[700px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-beige-200">
+        <h2 class="text-base font-semibold text-coffee">操作日志</h2>
+        <button onclick="closeLogViewer()" class="p-1.5 text-coffee-light hover:text-coffee rounded-lg hover:bg-beige-100">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="flex items-center gap-3 px-6 py-3 border-b border-beige-200">
+        <input type="date" id="log-date" onchange="loadLogs()" class="text-sm border border-beige-200 rounded-lg px-3 py-1.5 bg-beige-50 text-coffee">
+        <select id="log-filter" onchange="renderLogList()" class="text-sm border border-beige-200 rounded-lg px-3 py-1.5 bg-beige-50 text-coffee">
+          <option value="">全部操作</option>
+          <option value="topic">选题</option>
+          <option value="step">工序</option>
+          <option value="note">备注</option>
+          <option value="tml">TML</option>
+          <option value="canbox">Canbox</option>
+          <option value="settings">设置</option>
+          <option value="data">数据</option>
+        </select>
+      </div>
+      <div id="log-list" class="flex-1 overflow-y-auto px-6 py-4 space-y-2"></div>
+      <div id="log-pagination" class="flex items-center justify-between px-6 py-3 border-t border-beige-200 text-xs text-coffee-light"></div>
+    </div>
+  </div>
+
   <!-- 备注编辑弹窗 -->
   <div id="note-modal" class="fixed inset-0 z-50 hidden">
     <div class="modal-overlay absolute inset-0" onclick="closeNoteModal()"></div>
@@ -357,6 +391,7 @@
   let currentView = 'calendar';
   let selectedTopicId = null;
   let saveTimer = null;
+  let saveAbort = null;
   let ganttStartDate = null;
   let ganttTotalDays = 0;
   let editingTitleId = null;
@@ -372,6 +407,46 @@
   function shortDate(dateStr) { if (!dateStr) return '—'; const p = dateStr.split('-'); return parseInt(p[1]) + '/' + parseInt(p[2]); }
   function nowISO() { return new Date().toISOString(); }
   function shortTime(iso) { if (!iso) return ''; const d = new Date(iso); return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+
+  // ── 多段拍摄检测 (R07) ──
+  function detectShootSegments(dates) {
+    if (!dates || !dates.length) return [];
+    const sorted = [...dates].sort();
+    const segments = [];
+    let segStart = sorted[0], segEnd = sorted[0];
+    for (let i = 1; i < sorted.length; i++) {
+      const expected = addDays(segEnd, 1);
+      if (sorted[i] === expected) { segEnd = sorted[i]; }
+      else { segments.push({ start: segStart, end: segEnd }); segStart = sorted[i]; segEnd = sorted[i]; }
+    }
+    segments.push({ start: segStart, end: segEnd });
+    return segments;
+  }
+  function formatSegments(segments) {
+    if (!segments || segments.length <= 1) return null;
+    return segments.map(s => s.start === s.end ? shortDate(s.start) : `${shortDate(s.start)}~${shortDate(s.end)}`).join(', ');
+  }
+
+  // ── 操作日志 (R04) ──
+  async function getBrowserFingerprint() {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.textBaseline = 'top'; ctx.font = '14px Arial'; ctx.fillText('fp', 2, 2);
+    const canvasData = canvas.toDataURL().slice(-50);
+    const ua = navigator.userAgent;
+    const screen = `${window.screen.width}x${window.screen.height}x${window.screen.colorDepth}`;
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    const raw = `${canvasData}|${ua}|${screen}|${tz}`;
+    let hash = 0;
+    for (let i = 0; i < raw.length; i++) { hash = ((hash << 5) - hash) + raw.charCodeAt(i); hash |= 0; }
+    return 'fp_' + Math.abs(hash).toString(36);
+  }
+  let _fp = null;
+  async function logAction(action, topicId, detail) {
+    if (!_fp) { try { _fp = await getBrowserFingerprint(); } catch { _fp = 'fp_unknown'; } }
+    const entry = { action, topicId, detail, fingerprint: _fp, userAgent: navigator.userAgent, timestamp: new Date().toISOString() };
+    try { if (navigator.sendBeacon) navigator.sendBeacon('/api/log', JSON.stringify(entry)); else fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry) }); } catch {}
+  }
 
   function reverseSchedule(publishDate, stepDefs) {
     const defs = stepDefs || getStepDefs();
@@ -474,7 +549,9 @@
     saveTimer = setTimeout(async () => {
       appState.lastModified = nowISO();
       localStorage.setItem('pocket_os_backup', JSON.stringify(appState));
-      try { await fetch('/api/data', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(appState) }); } catch (e) {}
+      if (saveAbort) saveAbort.abort();
+      saveAbort = new AbortController();
+      try { await fetch('/api/data', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(appState), signal: saveAbort.signal }); } catch (e) {}
     }, 300);
   }
 
@@ -502,11 +579,14 @@
     appState.topics.push(topic);
     selectedTopicId = topic.id;
     saveData();
+    logAction('topic.create', topic.id, { title: topic.title });
     switchView('edit');
   }
 
   function deleteTopic(id) {
     if (!confirm('确定删除？')) return;
+    const t = appState.topics.find(t => t.id === id);
+    logAction('topic.delete', id, { title: t?.title });
     appState.topics = appState.topics.filter(t => t.id !== id);
     if (selectedTopicId === id) selectedTopicId = appState.topics.length ? appState.topics[0].id : null;
     saveData();
@@ -543,6 +623,10 @@
         const d = new Date(topic.canboxImport.shootStart + 'T00:00:00');
         projectCalYear = d.getFullYear();
         projectCalMonth = d.getMonth();
+      } else if (topic?.productionSteps?.length) {
+        const d = new Date(topic.productionSteps[0].startDate + 'T00:00:00');
+        projectCalYear = d.getFullYear();
+        projectCalMonth = d.getMonth();
       } else {
         const now = new Date();
         projectCalYear = now.getFullYear();
@@ -577,12 +661,16 @@
     const wrapper = document.getElementById('gantt-scroll-wrapper');
     if (!wrapper) return;
     if (wrapper.scrollLeft + wrapper.clientWidth > wrapper.scrollWidth - 200) {
-      ganttTotalDays += GANTT_EXTEND_DAYS; renderCalendar(); wrapper.scrollLeft = wrapper.scrollLeft;
+      const saved = wrapper.scrollLeft;
+      ganttTotalDays += GANTT_EXTEND_DAYS; renderCalendar();
+      requestAnimationFrame(() => { wrapper.scrollLeft = saved; });
     }
     if (wrapper.scrollLeft < 200) {
+      const saved = wrapper.scrollLeft;
       ganttTotalDays += GANTT_EXTEND_DAYS;
       ganttStartDate.setDate(ganttStartDate.getDate() - GANTT_EXTEND_DAYS);
-      renderCalendar(); wrapper.scrollLeft = GANTT_EXTEND_DAYS * CELL_W + wrapper.scrollLeft;
+      renderCalendar();
+      requestAnimationFrame(() => { wrapper.scrollLeft = GANTT_EXTEND_DAYS * CELL_W + saved; });
     }
     updateCalendarRange();
   }
@@ -659,12 +747,13 @@
       const rowH = Math.max(ROW_BASE, blocks.maxLanes * LANE_H + 4);
       html += `<div class="gantt-row" style="width:${dates.length * CELL_W}px;height:${rowH}px">`;
 
-      // 日期格子背景
+      // 日期格子背景 + 备注标记 (R05)
       dates.forEach((d, i) => {
         const isToday = d === todayFmt;
         const dow = new Date(d+'T00:00:00').getDay();
         const isWe = dow === 0 || dow === 6;
-        html += `<div class="absolute date-cell ${isToday?'bg-brand/5':isWe?'bg-gray-50/50':''}" style="left:${i*CELL_W}px;top:0;width:${CELL_W}px;height:${rowH}px;border-right:1px solid #EFECE6;${showDateClick?'':'pointer-events:none'}" data-date="${d}" data-topic="${topic.id}" onclick="onDateCellClick(event,'${topic.id}','${d}')" ondragover="ganttDragOver(event)" ondrop="ganttDrop(event,'${topic.id}','${d}')" ondragleave="this.classList.remove('drag-over')"></div>`;
+        const hasNote = topic.notes && topic.notes[d];
+        html += `<div class="absolute date-cell ${isToday?'bg-brand/5':isWe?'bg-gray-50/50':''}" style="left:${i*CELL_W}px;top:0;width:${CELL_W}px;height:${rowH}px;border-right:1px solid #EFECE6;${showDateClick?'':'pointer-events:none'}" data-date="${d}" data-topic="${topic.id}" onclick="onDateCellClick(event,'${topic.id}','${d}')" ondragover="ganttDragOver(event)" ondrop="ganttDrop(event,'${topic.id}','${d}')" ondragleave="this.classList.remove('drag-over')">${hasNote?'<div style="position:absolute;top:2px;right:4px;width:6px;height:6px;border-radius:50%;background:#B37D56" title="'+escapeHtml(hasNote).slice(0,20)+'"></div>':''}</div>`;
       });
 
       // 合并色块（按 lane 分层）
@@ -721,6 +810,16 @@
         <span class="text-xs ${existing?'text-brand':'text-coffee-light'}">${label}</span>
       </button>`;
     }).join('');
+
+    // R05: 备注区域
+    const note = topic.notes && topic.notes[date];
+    list.innerHTML += `<div class="border-t border-beige-200 mt-2 pt-2">
+      <button onclick="closeStepPopup();openNoteModal('${topicId}','${date}')" class="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-beige-100 text-left transition-colors">
+        <svg class="w-3.5 h-3.5 text-coffee-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>
+        <span class="text-sm text-coffee flex-1">${note ? '编辑备注' : '添加备注'}</span>
+        ${note ? `<span class="text-xs text-coffee-light truncate max-w-[80px]">${escapeHtml(note).slice(0,10)}</span>` : ''}
+      </button>
+    </div>`;
 
     const rect = e.currentTarget.getBoundingClientRect();
     popup.style.top = (rect.bottom + 4) + 'px';
@@ -790,6 +889,13 @@
   function onGanttBlockClick(e, topicId, stepKey) {
     e.stopPropagation();
     if (dragData || wasDragging) return;
+    // 检测是否为拖拽产生的误点击（鼠标位移超过 4px）
+    if (dragStartPos) {
+      const dx = Math.abs(e.clientX - dragStartPos.x);
+      const dy = Math.abs(e.clientY - dragStartPos.y);
+      if (dx > 4 || dy > 4) { dragStartPos = null; return; }
+      dragStartPos = null;
+    }
     const topic = appState.topics.find(t => t.id === topicId);
     if (!topic) return;
     const step = topic.productionSteps.find(s => s.key === stepKey);
@@ -827,8 +933,9 @@
   // ── 甘特图拖拽 ──
   let dragData = null;
   let wasDragging = false;
-  function ganttDragStart(e, topicId, stepKey) { dragData = { topicId, stepKey }; wasDragging = false; e.dataTransfer.effectAllowed = 'move'; e.target.classList.add('dragging'); }
-  function ganttDragEnd(e) { e.target.classList.remove('dragging'); if (dragData) wasDragging = true; dragData = null; setTimeout(() => wasDragging = false, 50); }
+  let dragStartPos = null;
+  function ganttDragStart(e, topicId, stepKey) { dragData = { topicId, stepKey }; wasDragging = false; dragStartPos = { x: e.clientX, y: e.clientY }; e.dataTransfer.effectAllowed = 'move'; e.target.classList.add('dragging'); }
+  function ganttDragEnd(e) { e.target.classList.remove('dragging'); if (dragData) wasDragging = true; dragData = null; setTimeout(() => wasDragging = false, 200); }
   function ganttDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
   function ganttDrop(e, topicId, targetDate) {
     e.preventDefault(); e.currentTarget.classList.remove('drag-over');
@@ -1124,6 +1231,10 @@
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
         粘贴 TML
       </button>
+      <button onclick="exportTml('${topic.id}')" class="text-xs text-coffee-light border border-beige-300 rounded-lg px-3 py-1.5 hover:bg-beige-100 transition-colors flex items-center gap-1">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+        导出 TML
+      </button>
     </div>`;
 
     // 前置准备
@@ -1178,7 +1289,7 @@
         <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
           ${cb.location ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#6BA3BE] flex-shrink-0"></span><span class="text-coffee-light">拍摄地</span> <span class="font-bold text-coffee">${escapeHtml(cb.location)}</span></div>` : ''}
           ${cb.type ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#C8A2E8] flex-shrink-0"></span><span class="text-coffee-light">类型</span> <span class="font-bold text-coffee">${escapeHtml(cb.type)}</span></div>` : ''}
-          ${cb.shootStart && cb.shootEnd ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#A5C8E1] flex-shrink-0"></span><span class="text-coffee-light">拍摄段</span> <span class="font-bold text-coffee">${cb.shootStart} ~ ${cb.shootEnd}</span></div>` : ''}
+          ${cb.shootStart && cb.shootEnd ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#A5C8E1] flex-shrink-0"></span><span class="text-coffee-light">拍摄段</span> <span class="font-bold text-coffee">${cb.segments && cb.segments.length > 1 ? cb.segments.map(s => s.start === s.end ? shortDate(s.start) : shortDate(s.start)+'~'+shortDate(s.end)).join(', ') : cb.shootStart + ' ~ ' + cb.shootEnd}</span></div>` : ''}
           ${cb.director ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#E8A87C] flex-shrink-0"></span><span class="text-coffee-light">导演</span> <span class="font-bold text-coffee">${escapeHtml(cb.director)}</span></div>` : ''}
           ${cb.photographer ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#85CDCA] flex-shrink-0"></span><span class="text-coffee-light">摄影</span> <span class="font-bold text-coffee">${escapeHtml(cb.photographer)}</span></div>` : ''}
           ${cb.production ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#D5A5E1] flex-shrink-0"></span><span class="text-coffee-light">制片</span> <span class="font-bold text-coffee">${escapeHtml(cb.production)}</span></div>` : ''}
@@ -1211,7 +1322,8 @@
     steps.forEach((step, idx) => {
       const isC = conflict.hasConflict && conflict.stepKey === step.key;
       const isRange = step.startDate !== (step.endDate || step.startDate);
-      html += `<div class="wf-row flex items-center gap-2 py-1.5 px-2 rounded group ${isC?'bg-danger-bg':''}">
+      html += `<div class="wf-row flex items-center gap-2 py-1.5 px-2 rounded group ${isC?'bg-danger-bg':''}" data-step-idx="${idx}" draggable="false">
+        <span class="cursor-grab text-coffee-light hover:text-coffee select-none px-0.5 flex-shrink-0" onmousedown="stepDragStart(event,'${topic.id}',${idx})" title="按住拖拽排序">⠿</span>
         <input type="checkbox" ${step.done?'checked':''} onchange="toggleStep('${topic.id}',${idx})" class="w-4 h-4 rounded accent-[#38A169]">
         <span class="text-sm ${step.done?'line-through text-coffee-light':'text-coffee'} w-20 flex-shrink-0 truncate">${step.name}</span>
         <input type="date" value="${step.startDate}" onchange="updateStepDate('${topic.id}',${idx},'startDate',this.value)" class="text-xs border border-beige-200 rounded px-1.5 py-0.5 bg-white ${isC?'text-danger-text font-medium':'text-coffee-light'}" style="width:110px">
@@ -1319,7 +1431,9 @@
       if (blocker) { alert(`请先完成「${blocker}」`); return; }
     }
     t.productionSteps[idx].done = !t.productionSteps[idx].done;
-    markUpdated(t); saveData(); renderAll();
+    markUpdated(t); saveData();
+    logAction('step.toggle', id, { step: t.productionSteps[idx].name, done: t.productionSteps[idx].done });
+    renderAll();
   }
   function toggleStepByKey(id, stepKey) {
     const t = appState.topics.find(t => t.id === id); if (!t) return;
@@ -1380,6 +1494,59 @@
     markUpdated(t); saveData(); renderAll();
   }
 
+  // ── 工序拖拽排序 (R06) ──
+  let stepDragIdx = null;
+  let stepDragTopicId = null;
+  function stepDragStart(e, topicId, idx) {
+    e.preventDefault();
+    stepDragIdx = idx;
+    stepDragTopicId = topicId;
+    const row = e.target.closest('.wf-row');
+    if (row) { row.setAttribute('draggable', 'true'); row.style.opacity = '0.5'; row.style.background = 'rgba(179,125,86,0.1)'; }
+    document.querySelectorAll('.wf-row').forEach(r => {
+      r.addEventListener('dragover', stepDragOver);
+      r.addEventListener('drop', stepDrop);
+      r.addEventListener('dragend', stepDragEnd);
+    });
+  }
+  function stepDragOver(e) {
+    e.preventDefault();
+    e.currentTarget.style.borderTop = '2px solid #B37D56';
+  }
+  function stepDrop(e) {
+    e.preventDefault();
+    e.currentTarget.style.borderTop = '';
+    const targetIdx = parseInt(e.currentTarget.dataset.stepIdx);
+    if (stepDragIdx === null || stepDragIdx === targetIdx || !stepDragTopicId) return;
+    const t = appState.topics.find(t => t.id === stepDragTopicId);
+    if (!t) return;
+    const [moved] = t.productionSteps.splice(stepDragIdx, 1);
+    t.productionSteps.splice(targetIdx, 0, moved);
+    // 以 publishDate 为锚点重新倒排，保留完成状态
+    if (t.publishDate) {
+      const doneMap = {}; t.productionSteps.forEach(s => { doneMap[s.key] = s.done; });
+      const newSteps = reverseSchedule(t.publishDate);
+      newSteps.forEach(ns => { if (doneMap[ns.key]) ns.done = true; });
+      // 保留不在标准工序中的自定义工序
+      const customKeys = t.productionSteps.filter(s => !newSteps.find(ns => ns.key === s.key)).map(s => s.key);
+      const customSteps = t.productionSteps.filter(s => customKeys.includes(s.key));
+      t.productionSteps = [...newSteps, ...customSteps];
+    }
+    markUpdated(t); saveData(); logAction('step.reorder', t.id, { from: stepDragIdx, to: targetIdx });
+    renderAll();
+  }
+  function stepDragEnd() {
+    stepDragIdx = null;
+    stepDragTopicId = null;
+    document.querySelectorAll('.wf-row').forEach(r => {
+      r.style.opacity = ''; r.style.background = ''; r.style.borderTop = '';
+      r.setAttribute('draggable', 'false');
+      r.removeEventListener('dragover', stepDragOver);
+      r.removeEventListener('drop', stepDrop);
+      r.removeEventListener('dragend', stepDragEnd);
+    });
+  }
+
   // ── 设置弹窗 ──
   let settingsDraft = [];
   function openSettings() { settingsDraft = JSON.parse(JSON.stringify(getStepDefs())); renderSettingsList(); document.getElementById('settings-modal').classList.remove('hidden'); }
@@ -1425,7 +1592,7 @@
   function settingsAddStep() { settingsDraft.push({ key: 'step_' + Date.now(), name: '新工序', color: '#B8D4E3', offset: 1, duration: 1 }); renderSettingsList(); }
   function settingsRemoveStep(i) { if (settingsDraft.length <= 1) { alert('至少保留一个工序'); return; } settingsDraft.splice(i, 1); renderSettingsList(); }
   function settingsRestoreDefaults() { if (!confirm('恢复默认工序将覆盖当前设置，继续？')) return; settingsDraft = JSON.parse(JSON.stringify(DEFAULT_STEP_DEFS)); renderSettingsList(); }
-  function saveSettings() { appState.settings.stepDefs = settingsDraft; saveData(); closeSettings(); renderAll(); }
+  function saveSettings() { appState.settings.stepDefs = settingsDraft; saveData(); closeSettings(); logAction('settings.save', null, { steps: settingsDraft.map(s => s.name) }); renderAll(); }
   function settingsRescheduleAll() {
     if (!confirm('确定要用当前工序设置重新倒排所有选题？')) return;
     appState.topics.forEach(t => {
@@ -1507,8 +1674,11 @@
       canboxProjects = Object.values(projectMap).map(p => {
         p.dates.sort();
         p.shootDate = p.dates[0];
-        p.dateRange = p.dates.length > 1 ? `${p.dates[0]} ~ ${p.dates[p.dates.length-1]}` : p.dates[0];
+        p.segments = detectShootSegments(p.dates);
+        const segText = formatSegments(p.segments);
+        p.dateRange = segText || (p.dates.length > 1 ? `${p.dates[0]} ~ ${p.dates[p.dates.length-1]}` : p.dates[0]);
         p.dayCount = p.dates.length;
+        p.segmentCount = p.segments ? p.segments.length : 1;
         return p;
       });
 
@@ -1557,7 +1727,7 @@
           <div class="flex-1 min-w-0">
             <div class="text-sm font-medium text-coffee truncate">${escapeHtml(p.name)}</div>
             <div class="flex items-center gap-2 mt-0.5 flex-wrap">
-              <span class="text-xs text-coffee-light">📅 ${p.dateRange}${p.dayCount > 1 ? ` (${p.dayCount}天)` : ''}</span>
+              <span class="text-xs text-coffee-light">📅 ${p.dateRange}${p.segmentCount > 1 ? ` (${p.segmentCount}段)` : p.dayCount > 1 ? ` (${p.dayCount}天)` : ''}</span>
               ${p.type ? `<span class="text-xs px-1.5 py-0.5 rounded bg-sage-bg text-sage-text">${escapeHtml(p.type)}</span>` : ''}
               ${p.location ? `<span class="text-xs text-coffee-light">📍 ${escapeHtml(p.location)}</span>` : ''}
               ${p.laodao ? '<span class="text-xs text-brand">老刀</span>' : ''}
@@ -1618,7 +1788,7 @@
         projectType: '商业项目', platforms: Array.isArray(platforms) ? platforms : [],
         publishDate, preparationTasks: [], productionSteps,
         createdAt: nowISO(), updatedAt: nowISO(),
-        canboxImport: { source: 'canbox', shootStart, shootEnd, dates: p.dates, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations }
+        canboxImport: { source: 'canbox', shootStart, shootEnd, dates: p.dates, segments: p.segments || null, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations }
       };
       appState.topics.push(topic);
       imported++;
@@ -1626,6 +1796,7 @@
 
     saveData(); renderAll();
     status.textContent = `已导入 ${imported} 个项目`; status.className = 'text-xs text-green-600';
+    logAction('canbox.import', null, { count: imported });
     setTimeout(() => { closeCanboxImport(); switchView('edit'); selectedTopicId = appState.topics[appState.topics.length - 1]?.id; renderAll(); }, 800);
   }
 
@@ -1656,8 +1827,10 @@
       t.publishDate = publishDate;
     }
 
-    t.canboxImport = { source: 'canbox', shootStart, shootEnd, dates: p.dates, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations };
-    markUpdated(t); saveData(); closeCanboxImport(); renderAll();
+    t.canboxImport = { source: 'canbox', shootStart, shootEnd, dates: p.dates, segments: p.segments || null, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations };
+    markUpdated(t); saveData(); closeCanboxImport();
+    logAction('canbox.bind', t.id, { name: p.name, shootStart, shootEnd });
+    renderAll();
   }
 
   // ── 系统信息 ──
@@ -1686,13 +1859,6 @@
   function renderProjectCalendar() {
     const topic = appState.topics.find(t => t.id === selectedTopicId);
     if (!topic) return;
-
-    // 如果项目有拍摄段，初始化到拍摄月份
-    if (topic.canboxImport?.shootStart && projectCalMonth === undefined) {
-      const d = new Date(topic.canboxImport.shootStart + 'T00:00:00');
-      projectCalYear = d.getFullYear();
-      projectCalMonth = d.getMonth();
-    }
 
     const title = document.getElementById('project-cal-title');
     title.textContent = `${projectCalYear}年 ${projectCalMonth + 1}月`;
@@ -1815,14 +1981,18 @@
     if (!topic.notes) topic.notes = {};
     if (text) topic.notes[noteEditDate] = text;
     else delete topic.notes[noteEditDate];
-    markUpdated(topic); saveData(); closeNoteModal(); renderProjectCalendar();
+    markUpdated(topic); saveData(); closeNoteModal();
+    logAction(text ? 'note.create' : 'note.delete', noteEditTopicId, { date: noteEditDate, text: text || '' });
+    renderAll();
   }
   function deleteNote() {
     const topic = appState.topics.find(t => t.id === noteEditTopicId);
     if (!topic || !noteEditDate) return;
     if (!topic.notes) topic.notes = {};
     delete topic.notes[noteEditDate];
-    markUpdated(topic); saveData(); closeNoteModal(); renderProjectCalendar();
+    markUpdated(topic); saveData(); closeNoteModal();
+    logAction('note.delete', noteEditTopicId, { date: noteEditDate });
+    renderAll();
   }
 
   // ── 导出通告单图片 ──
@@ -1955,6 +2125,11 @@
     }
 
     // ── 用 html2canvas 导出，在新窗口打开 ──
+    if (typeof html2canvas === 'undefined') {
+      alert('导出组件未加载，请检查网络连接后刷新页面重试');
+      document.body.removeChild(container);
+      return;
+    }
     try {
       const canvas = await html2canvas(container, {
         scale: 2,
@@ -1981,6 +2156,44 @@
     document.body.removeChild(container);
   }
 
+  // ── 导出 TML 文本 (R01) ──
+  function exportTml(topicId) {
+    const topic = appState.topics.find(t => t.id === topicId);
+    if (!topic) return;
+    const steps = topic.productionSteps || [];
+    const notes = topic.notes || {};
+    const lines = [];
+    const usedDates = new Set();
+
+    steps.forEach(s => {
+      const isRange = s.startDate !== (s.endDate || s.startDate);
+      const dateStr = isRange ? `${shortDate(s.startDate)}~${shortDate(s.endDate || s.startDate)}` : shortDate(s.startDate);
+      lines.push(`${s.name} ${dateStr}`);
+      // 收集工序覆盖的日期
+      let d = s.startDate;
+      const end = s.endDate || s.startDate;
+      while (d <= end) { usedDates.add(d); d = addDays(d, 1); }
+    });
+
+    // 附加不属于任何工序的纯备注
+    const pureNotes = Object.entries(notes).filter(([d]) => !usedDates.has(d)).sort(([a], [b]) => a.localeCompare(b));
+    if (pureNotes.length) {
+      lines.push('');
+      pureNotes.forEach(([d, text]) => { lines.push(`${shortDate(d)} ${text}`); });
+    }
+
+    const tmlText = lines.join('\n');
+    const modal = document.getElementById('tml-modal');
+    const input = document.getElementById('tml-input');
+    const preview = document.getElementById('tml-preview');
+    document.querySelector('#tml-modal h3').textContent = '导出 TML 排期';
+    input.value = tmlText;
+    preview.classList.add('hidden');
+    preview.innerHTML = '';
+    modal.classList.remove('hidden');
+    input.select();
+  }
+
   // ── TML 粘贴解析 ──
   let tmlTopicId = null;
   let tmlParsed = null;
@@ -1990,6 +2203,7 @@
     document.getElementById('tml-input').value = '';
     document.getElementById('tml-preview').classList.add('hidden');
     document.getElementById('tml-preview').innerHTML = '';
+    document.querySelector('#tml-modal h3').textContent = '粘贴 TML 排期';
     document.getElementById('tml-modal').classList.remove('hidden');
     document.getElementById('tml-input').focus();
   }
@@ -2005,7 +2219,9 @@
     const topic = appState.topics.find(t => t.id === tmlTopicId);
     if (!topic) return;
     topic.tmlNote = input;
-    markUpdated(topic); saveData(); closeTmlModal(); renderAll();
+    markUpdated(topic); saveData(); closeTmlModal();
+    logAction('tml.record', topic.id, { length: input.length });
+    renderAll();
   }
 
   function editTmlNote(topicId) {
@@ -2205,6 +2421,11 @@
       }
     });
 
+    // R03: 解析到发布工序时同步更新 publishDate
+    if (tmlParsed.steps.publish) {
+      topic.publishDate = tmlParsed.steps.publish.startDate;
+    }
+
     // 应用备注
     if (!topic.notes) topic.notes = {};
     Object.entries(tmlParsed.notes).forEach(([date, texts]) => {
@@ -2213,7 +2434,65 @@
       topic.notes[date] = existing ? existing + '；' + newNotes : newNotes;
     });
 
-    markUpdated(topic); saveData(); closeTmlModal(); renderAll();
+    // R02: 解析并应用时同步记录 TML 原文
+    const rawInput = document.getElementById('tml-input').value.trim();
+    if (rawInput) topic.tmlNote = rawInput;
+
+    markUpdated(topic); saveData(); closeTmlModal();
+    logAction('tml.apply', topic.id, { steps: Object.keys(tmlParsed.steps), notes: Object.keys(tmlParsed.notes) });
+    renderAll();
+  }
+
+  // ── 操作日志查看器 (R04) ──
+  let logCache = [];
+  let logPage = 1;
+  let logTotalPages = 1;
+  const ACTION_LABELS = {
+    'topic.create': '新建选题', 'topic.delete': '删除选题', 'topic.update': '修改选题',
+    'step.toggle': '工序状态', 'step.update': '工序日期', 'step.reorder': '工序排序',
+    'step.add': '新增工序', 'step.delete': '删除工序',
+    'date.publish': '发布日期', 'note.create': '创建备注', 'note.update': '修改备注', 'note.delete': '删除备注',
+    'tml.apply': 'TML 应用', 'tml.record': 'TML 记录',
+    'canbox.import': 'Canbox 导入', 'canbox.bind': 'Canbox 绑定',
+    'settings.save': '保存设置', 'data.import': '导入数据', 'data.export': '导出数据'
+  };
+  function openLogViewer() {
+    document.getElementById('log-date').value = todayStr();
+    document.getElementById('log-modal').classList.remove('hidden');
+    loadLogs();
+  }
+  function closeLogViewer() { document.getElementById('log-modal').classList.add('hidden'); }
+  async function loadLogs() {
+    const date = document.getElementById('log-date').value;
+    logPage = 1;
+    try {
+      const res = await fetch(`/api/logs?date=${date}&page=${logPage}`);
+      const data = await res.json();
+      logCache = data.logs || [];
+      logTotalPages = data.totalPages || 1;
+      renderLogList();
+      document.getElementById('log-pagination').innerHTML = `<span>共 ${data.total} 条</span><span>${data.date}</span>`;
+    } catch { logCache = []; renderLogList(); }
+  }
+  function renderLogList() {
+    const el = document.getElementById('log-list');
+    const filter = document.getElementById('log-filter').value;
+    let logs = logCache;
+    if (filter) logs = logs.filter(l => (l.action || '').startsWith(filter));
+    if (!logs.length) { el.innerHTML = '<p class="text-xs text-coffee-light text-center py-8">暂无日志</p>'; return; }
+    el.innerHTML = logs.map(l => {
+      const time = l.timestamp ? new Date(l.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+      const label = ACTION_LABELS[l.action] || l.action;
+      const topic = l.topicId ? appState.topics.find(t => t.id === l.topicId) : null;
+      const topicName = topic ? topic.title : (l.topicId || '');
+      const detail = l.detail ? (typeof l.detail === 'object' ? JSON.stringify(l.detail) : l.detail) : '';
+      return `<div class="flex items-start gap-3 py-2 px-3 rounded-lg hover:bg-beige-50">
+        <span class="text-xs text-coffee-light w-14 flex-shrink-0">${time}</span>
+        <span class="text-xs font-medium text-brand w-16 flex-shrink-0">${escapeHtml(label)}</span>
+        <span class="text-xs text-coffee flex-1 truncate">${escapeHtml(topicName)}</span>
+        <span class="text-xs text-coffee-light truncate max-w-[200px]" title="${escapeHtml(detail)}">${escapeHtml(detail).slice(0, 40)}</span>
+      </div>`;
+    }).join('');
   }
 
   // ── 初始化 ──

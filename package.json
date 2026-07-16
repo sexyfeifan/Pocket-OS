@@ -1,6 +1,6 @@
 {
   "name": "pocket-os",
-  "version": "1.6.1",
+  "version": "1.7.0",
   "description": "智能自媒体操作系统 — 面向J型创作者的内容全生命周期管理",
   "main": "server.js",
   "scripts": {

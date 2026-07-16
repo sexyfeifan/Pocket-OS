@@ -110,7 +110,7 @@
     if (!allItems.length) return 0;
     return Math.round(allItems.filter(i => i.done).length / allItems.length * 100);
   }
-  function sortedTopics() { return [...appState.topics].sort((a, b) => (a.publishDate || 'z').localeCompare(b.publishDate || 'z')); }
+  function sortedTopics() { return [...appState.topics].filter(t => !t.completed).sort((a, b) => (a.publishDate || 'z').localeCompare(b.publishDate || 'z')); }
   function getActiveSteps(topic) { return (topic.productionSteps || []).filter(s => !s.cleared); }
 
   async function loadData() {

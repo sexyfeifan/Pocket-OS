@@ -290,6 +290,98 @@ app.get('/api/system', (req, res) => {
   res.json({ version: BUILD_VERSION, startupTime: STARTUP_TIME, uptime, uptimeSeconds, clients: sseClients.size });
 });
 
+// ── 公开只读 API ──
+function checkApiKey(req, res, next) {
+  const key = req.query.key || req.headers['x-api-key'] || '';
+  const settings = readJSON(SETTINGS_FILE, {});
+  const storedKey = settings.apiKey || '';
+  if (!storedKey) return res.status(403).json({ error: 'API Key 未设置，请在 Pocket OS 设置中生成' });
+  if (key !== storedKey) return res.status(401).json({ error: 'API Key 无效' });
+  next();
+}
+
+// 生成 API Key
+app.post('/api/settings/apikey', express.json(), async (req, res) => {
+  try {
+    const settings = readJSON(SETTINGS_FILE, {});
+    const key = 'pk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    settings.apiKey = key;
+    await writeJSON(SETTINGS_FILE, settings);
+    res.json({ success: true, apiKey: key });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/public/topics — 所有选题概览
+app.get('/api/public/topics', checkApiKey, async (req, res) => {
+  try {
+    const topics = await readAllTopics();
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const start = (page - 1) * limit;
+    const sorted = topics.sort((a, b) => (a.publishDate || 'z').localeCompare(b.publishDate || 'z'));
+    const items = sorted.slice(start, start + limit).map(t => ({
+      id: t.id, title: t.title, category: t.category, platforms: t.platforms,
+      publishDate: t.publishDate, completed: t.completed || false,
+      progress: (() => {
+        const active = (t.productionSteps || []).filter(s => !s.cleared);
+        return active.length ? Math.round(active.filter(s => s.done).length / active.length * 100) : 0;
+      })(),
+      createdAt: t.createdAt, updatedAt: t.updatedAt
+    }));
+    res.json({ page, limit, total: topics.length, topics: items });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/public/topics/:id — 单个选题详情
+app.get('/api/public/topics/:id', checkApiKey, async (req, res) => {
+  try {
+    const topicFile = path.join(TOPICS_DIR, `${req.params.id}.json`);
+    if (!fs.existsSync(topicFile)) return res.status(404).json({ error: '选题不存在' });
+    const topic = readJSON(topicFile);
+    res.json(topic);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/public/calendar — 指定时间范围排期
+app.get('/api/public/calendar', checkApiKey, async (req, res) => {
+  try {
+    const from = req.query.from || new Date().toISOString().slice(0, 10);
+    const to = req.query.to || addDays(from, 30);
+    const topics = await readAllTopics();
+    const events = [];
+    topics.filter(t => !t.completed).forEach(t => {
+      (t.productionSteps || []).filter(s => !s.cleared && s.startDate).forEach(s => {
+        if (s.endDate >= from && s.startDate <= to) {
+          events.push({ topicId: t.id, topicTitle: t.title, stepKey: s.key, stepName: s.name, startDate: s.startDate, endDate: s.endDate, done: s.done, color: s.color });
+        }
+      });
+      if (t.notes) {
+        Object.entries(t.notes).forEach(([date, text]) => {
+          if (date >= from && date <= to) {
+            events.push({ topicId: t.id, topicTitle: t.title, stepKey: 'note', stepName: '备注', startDate: date, endDate: date, done: false, color: '#FFF3CD', note: text });
+          }
+        });
+      }
+    });
+    events.sort((a, b) => a.startDate.localeCompare(b.startDate));
+    res.json({ from, to, events });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 // ── 启动 ──
 migrateFromLegacy().then(() => {
   app.listen(PORT, () => {

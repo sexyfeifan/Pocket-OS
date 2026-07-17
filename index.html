@@ -540,9 +540,17 @@
   function checkConflict(steps) {
     const today = todayStr();
     for (const step of steps) {
-      if (!step.done && !step.cleared && step.endDate < today) return { hasConflict: true, message: `「${step.name}」已过期 (${step.endDate})，尚未完成。`, stepKey: step.key };
+      if (!step.done && !step.cleared && step.endDate && step.endDate < today) {
+        return { hasConflict: true, message: `存在延期任务：「${step.name}」已过期 (${step.endDate})`, stepKey: step.key };
+      }
     }
     return { hasConflict: false };
+  }
+
+  function getUpcomingSteps(steps) {
+    const today = todayStr();
+    const soon = addDays(today, 2);
+    return steps.filter(s => !s.done && !s.cleared && s.endDate && s.endDate >= today && s.endDate <= soon);
   }
 
   function getActiveSteps(topic) {
@@ -553,6 +561,14 @@
     if (topic.completed) return true;
     const active = getActiveSteps(topic);
     return active.length > 0 && active.every(s => s.done);
+  }
+
+  function autoUncomplete(topic) {
+    if (topic.completed) {
+      topic.completed = false;
+      delete topic.completedAt;
+      showToast(`「${escapeHtml(topic.title)}」已自动撤回完成状态`, 'info');
+    }
   }
 
   function completeProject(id) {
@@ -665,7 +681,7 @@
     loadSystemInfo();
   }
 
-  function markUpdated(topic) { topic.updatedAt = nowISO(); }
+  function markUpdated(topic) { topic.updatedAt = nowISO(); autoUncomplete(topic); }
 
   // ── 多点同步：按选题分别保存 ──
   let _dirtyTopics = new Set();
@@ -897,6 +913,7 @@
   function buildMergedBlocks(steps, dates) {
     const blocks = [];
     const todayFmt = todayStr();
+    const soonFmt = addDays(todayFmt, 2);
     steps.forEach(step => {
       let mergeStart = null;
       for (let i = 0; i < dates.length; i++) {
@@ -905,8 +922,9 @@
         if (inRange && mergeStart === null) mergeStart = i;
         if ((!inRange || i === dates.length - 1) && mergeStart !== null) {
           const endIdx = inRange ? i : i - 1;
-          const fromToday = step.endDate < todayFmt && !step.done;
-          blocks.push({ step, startIdx: mergeStart, endIdx, conflict: fromToday, lane: 0 });
+          const delayed = !step.done && step.endDate && step.endDate < todayFmt;
+          const upcoming = !step.done && step.endDate && step.endDate >= todayFmt && step.endDate <= soonFmt;
+          blocks.push({ step, startIdx: mergeStart, endIdx, conflict: delayed, upcoming, lane: 0 });
           mergeStart = null;
         }
       }
@@ -976,7 +994,7 @@
         const left = b.startIdx * CELL_W + 2;
         const width = (b.endIdx - b.startIdx + 1) * CELL_W - 4;
         const top = b.lane * LANE_H + 2;
-        html += `<div class="gantt-merged rounded px-1.5 flex items-center text-xs font-medium truncate ${b.conflict?'conflict-pulse':''}" style="left:${left}px;width:${width}px;top:${top}px;height:${LANE_H - 4}px;background:${b.step.color}${b.step.done?'88':''};${b.step.done?'text-decoration:line-through':''};cursor:grab" draggable="true" ondragstart="ganttDragStart(event,'${topic.id}','${b.step.key}')" ondragend="ganttDragEnd(event)" onclick="onGanttBlockClick(event,'${topic.id}','${b.step.key}')" title="${b.step.name} (${b.step.startDate} ~ ${b.step.endDate})">
+        html += `<div class="gantt-merged rounded px-1.5 flex items-center text-xs font-medium truncate ${b.conflict?'conflict-pulse':''}" style="left:${left}px;width:${width}px;top:${top}px;height:${LANE_H - 4}px;background:${b.step.color}${b.step.done?'88':''};${b.step.done?'text-decoration:line-through':''};${b.conflict?'border:2px dashed #E8A87C':''};${b.upcoming?'border:2px solid #F2D98B':''};cursor:grab" draggable="true" ondragstart="ganttDragStart(event,'${topic.id}','${b.step.key}')" ondragend="ganttDragEnd(event)" onclick="onGanttBlockClick(event,'${topic.id}','${b.step.key}')" title="${b.step.name} (${b.step.startDate} ~ ${b.step.endDate})${b.conflict?' - 延期':''}${b.upcoming?' - 即将到期':''}">
           <div class="resize-handle left" onmousedown="ganttResizeStart(event,'${topic.id}','${b.step.key}','left')"></div>
           <span class="flex-1 truncate pointer-events-none">${b.step.name}</span>
           <div class="resize-handle right" onmousedown="ganttResizeStart(event,'${topic.id}','${b.step.key}','right')"></div>
@@ -996,7 +1014,7 @@
     const legend = document.getElementById('gantt-legend');
     if (legend) legend.innerHTML = '<span class="text-xs text-coffee-light">图例：</span>' + defs.map(s => `<span class="inline-flex items-center gap-1 text-xs"><span class="w-3 h-3 rounded" style="background:${s.color}"></span>${s.name}</span>`).join('');
     updateCalendarRange();
-    renderGanttTable('gantt-container', dates, sortedTopics(), true, true);
+    renderGanttTable('gantt-container', dates, activeTopics(), true, true);
     const wrapper = document.getElementById('gantt-scroll-wrapper');
     if (wrapper && !wrapper._scrollBound) { wrapper.addEventListener('scroll', onGanttScroll); wrapper._scrollBound = true; }
   }
@@ -1242,8 +1260,9 @@
   function renderTopicSummaries() {
     const el = document.getElementById('topic-summaries');
     if (!el) return;
-    if (!appState.topics.length) { el.innerHTML = '<p class="text-xs text-coffee-light col-span-full text-center py-8">暂无选题</p>'; return; }
-    el.innerHTML = sortedTopics().map(topic => {
+    const active = activeTopics();
+    if (!active.length) { el.innerHTML = '<p class="text-xs text-coffee-light col-span-full text-center py-8">暂无进行中的选题</p>'; return; }
+    el.innerHTML = active.map(topic => {
       const progress = calcProgress(topic);
       const conflict = checkConflict(getActiveSteps(topic));
       const pubDate = topic.publishDate || '';
@@ -1292,7 +1311,7 @@
         if (cb.advertiserNo) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#D4A574] flex-shrink-0"></span><span class="text-coffee-light">商单</span> <span class="font-medium text-coffee">${escapeHtml(cb.advertiserNo)}</span></div>`;
         html += `</div>`;
       }
-      if (conflict.hasConflict) html += `<div class="text-xs text-danger-text bg-danger-bg rounded px-2 py-1.5 border border-danger-border">当前发布日期倒排后有任务落在时间轴开始前；如果尚未完成，需要延后发布日期或压缩流程。</div>`;
+      if (conflict.hasConflict) html += `<div class="text-xs text-danger-text bg-danger-bg rounded px-2 py-1.5 border border-danger-border">存在延期任务</div>`;
       html += '</div>';
       return html;
     }).join('');
@@ -1333,10 +1352,11 @@
     html += active.map(t => renderTopicItem(t)).join('');
     // 已完成（折叠）
     if (completed.length) {
+      const thisMonth = completed.filter(t => t.completedAt && t.completedAt.slice(0,7) === new Date().toISOString().slice(0,7)).length;
       html += `<div class="mt-2 pt-2 border-t border-beige-200">
         <button onclick="this.nextElementSibling.classList.toggle('hidden');this.querySelector('svg').classList.toggle('rotate-[-90deg]')" class="flex items-center gap-1 text-xs text-coffee-light px-2 py-1 w-full hover:text-coffee">
           <svg class="w-3 h-3 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-          已完成 (${completed.length})
+          已完成 (${completed.length}${thisMonth ? ` · 本月${thisMonth}` : ''})
         </button>
         <div class="hidden">${completed.map(t => renderTopicItem(t)).join('')}</div>
       </div>`;
@@ -1362,7 +1382,7 @@
   function renderCardList() {
     const grid = document.getElementById('card-grid');
     if (!appState.topics.length) { grid.innerHTML = ''; return; }
-    grid.innerHTML = sortedTopics().map(topic => {
+    grid.innerHTML = activeTopics().map(topic => {
       const progress = calcProgress(topic);
       const conflict = checkConflict(getActiveSteps(topic));
       const pubDate = topic.publishDate || '';
@@ -1396,7 +1416,7 @@
         </div>`;
       });
       html += `</div>`;
-      if (conflict.hasConflict) html += `<div class="text-xs text-danger-text bg-danger-bg rounded px-2 py-1.5 border border-danger-border">有任务已过期未完成</div>`;
+      if (conflict.hasConflict) html += `<div class="text-xs text-danger-text bg-danger-bg rounded px-2 py-1.5 border border-danger-border">存在延期任务</div>`;
       html += '</div>';
       return html;
     }).join('');
@@ -1593,7 +1613,7 @@
     html += `</div>`;
 
     if (conflict.hasConflict) {
-      html += `<div class="bg-danger-bg text-danger-text border border-danger-border rounded-lg px-4 py-3 text-sm">当前发布日期倒排后有任务落在时间轴开始前；如果尚未完成，需要延后发布日期或压缩流程。</div>`;
+      html += `<div class="bg-danger-bg text-danger-text border border-danger-border rounded-lg px-4 py-3 text-sm">存在延期任务</div>`;
     }
 
     html += '</div>';

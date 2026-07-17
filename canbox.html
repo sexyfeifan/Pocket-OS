@@ -54,6 +54,7 @@
       </div>
       <div class="flex items-center gap-2">
         <button onclick="scrollToToday()" class="px-2.5 py-1 text-xs text-brand border border-brand rounded-full hover:bg-brand hover:text-white transition-colors">今天</button>
+        <button id="toggle-completed" onclick="toggleShowCompleted()" class="px-2.5 py-1 text-xs text-coffee-light border border-beige-300 rounded-full hover:bg-beige-100 transition-colors"></button>
         <span id="last-refresh" class="text-xs text-coffee-light hidden sm:inline"></span>
       </div>
     </div>
@@ -111,14 +112,40 @@
     if (!allItems.length) return 0;
     return Math.round(allItems.filter(i => i.done).length / allItems.length * 100);
   }
-  function sortedTopics() { return [...appState.topics].sort((a, b) => (a.publishDate || 'z').localeCompare(b.publishDate || 'z')); }
+  function sortedTopics() {
+    const all = [...appState.topics].sort((a, b) => (a.publishDate || 'z').localeCompare(b.publishDate || 'z'));
+    if (showCompleted) return all;
+    return all.filter(t => !t.completed);
+  }
   function getActiveSteps(topic) { return (topic.productionSteps || []).filter(s => !s.cleared); }
+
+  // 已完成项目显示开关
+  let showCompleted = localStorage.getItem('canbox_show_completed') === 'true';
+  function toggleShowCompleted() {
+    showCompleted = !showCompleted;
+    localStorage.setItem('canbox_show_completed', showCompleted);
+    updateCompletedToggle();
+    renderAll();
+  }
+  function updateCompletedToggle() {
+    const btn = document.getElementById('toggle-completed');
+    const completedCount = appState.topics.filter(t => t.completed).length;
+    if (showCompleted) {
+      btn.textContent = '隐藏已完成';
+      btn.className = 'px-2.5 py-1 text-xs text-brand border border-brand rounded-full hover:bg-brand hover:text-white transition-colors';
+    } else {
+      btn.textContent = completedCount > 0 ? `显示已完成 (${completedCount})` : '显示已完成';
+      btn.className = 'px-2.5 py-1 text-xs text-coffee-light border border-beige-300 rounded-full hover:bg-beige-100 transition-colors';
+    }
+    btn.style.display = completedCount > 0 ? '' : 'none';
+  }
 
   async function loadData() {
     try {
       const res = await fetch('/api/data');
       if (res.ok) appState = await res.json();
     } catch (e) {}
+    updateCompletedToggle();
     renderAll();
     const el = document.getElementById('last-refresh');
     if (el) el.textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
@@ -222,8 +249,8 @@
       const notes = topic.notes || {};
 
       const isCompleted = topic.completed;
-      html += `<tr class="${isCompleted ? 'opacity-50' : ''}"><td class="gantt-sticky bg-white p-1.5 sm:p-2 border-b border-r border-beige-200" style="min-width:${COL_W}px;width:${COL_W}px">
-        <div class="flex items-center gap-1">${conflict.hasConflict?'<svg class="w-3 h-3 sm:w-3.5 sm:h-3.5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>':''}<span class="text-xs sm:text-sm font-medium truncate">${escapeHtml(topic.title)}</span>${isCompleted ? '<span class="completed-badge">已完成</span>' : ''}</div>
+      html += `<tr class="${isCompleted && showCompleted ? 'opacity-50' : ''}"><td class="gantt-sticky bg-white p-1.5 sm:p-2 border-b border-r border-beige-200" style="min-width:${COL_W}px;width:${COL_W}px">
+        <div class="flex items-center gap-1">${conflict.hasConflict?'<svg class="w-3 h-3 sm:w-3.5 sm:h-3.5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>':''}<span class="text-xs sm:text-sm font-medium truncate">${escapeHtml(topic.title)}</span>${isCompleted && showCompleted ? '<span class="completed-badge">已完成</span>' : ''}</div>
         <div class="text-xs text-coffee-light mt-0.5">${progress}%</div>
         ${topic.publishDate ? `<div class="text-xs text-brand font-medium mt-0.5">发布 ${shortDate(topic.publishDate)}</div>` : ''}</td>`;
 
@@ -277,11 +304,11 @@
       const summarySteps = getActiveSteps(topic).filter(s => SUMMARY_KEYS.includes(s.key));
       const cb = topic.canboxImport;
 
-      let html = `<div class="summary-card bg-white rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-sm border border-[#EFECE6] text-coffee flex flex-col gap-2 sm:gap-3 ${topic.completed ? 'opacity-60' : ''}">`;
+      let html = `<div class="summary-card bg-white rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-sm border border-[#EFECE6] text-coffee flex flex-col gap-2 sm:gap-3 ${topic.completed && showCompleted ? 'opacity-60' : ''}">`;
       html += `<div class="flex items-start justify-between">
         <div class="flex-1 min-w-0">
           <span class="inline-block bg-sage-bg text-sage-text text-xs rounded px-1.5 sm:px-2 py-0.5 font-medium mb-1 sm:mb-1.5">${escapeHtml(topic.category || '内容')}</span>
-          <h4 class="text-sm sm:text-base font-bold text-coffee truncate">${escapeHtml(topic.title)}${topic.completed ? '<span class="completed-badge">已完成</span>' : ''}</h4>
+          <h4 class="text-sm sm:text-base font-bold text-coffee truncate">${escapeHtml(topic.title)}${topic.completed && showCompleted ? '<span class="completed-badge">已完成</span>' : ''}</h4>
           ${(topic.platforms||[]).length ? `<div class="text-xs text-coffee-light mt-1 truncate">${topic.platforms.join(' · ')}</div>` : ''}
         </div>
         <div class="text-right flex-shrink-0 ml-2 sm:ml-3">

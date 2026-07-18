@@ -20,6 +20,11 @@ app.use('/index.html', express.static(path.join(__dirname, 'index.html')));
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/canbox', (req, res) => res.sendFile(path.join(__dirname, 'canbox.html')));
+app.get('/manifest.json', (req, res) => res.sendFile(path.join(__dirname, 'manifest.json')));
+app.get('/icon-192.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-192.png')));
+app.get('/icon-512.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-512.png')));
+app.get('/apple-touch-icon.png', (req, res) => res.sendFile(path.join(__dirname, 'apple-touch-icon.png')));
+app.get('/favicon.ico', (req, res) => res.sendFile(path.join(__dirname, 'favicon.ico')));
 app.get('/package.json', (req, res) => res.sendFile(path.join(__dirname, 'package.json')));
 
 // ── 初始化目录结构 ──

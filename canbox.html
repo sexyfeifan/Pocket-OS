@@ -105,9 +105,9 @@
   let appState = { topics: [] };
   let ganttStartDate = null, ganttTotalDays = 0;
   const GANTT_INITIAL_DAYS = 90, GANTT_EXTEND_DAYS = 30;
-  const isMobile = window.innerWidth < 640;
-  const CELL_W = isMobile ? 56 : 80;
-  const COL_W = isMobile ? 100 : 160;
+  function isMobile() { return window.innerWidth < 640; }
+  function getCellW() { return isMobile() ? 56 : 80; }
+  function getColW() { return isMobile() ? 100 : 160; }
 
   function fmtDate(d) { const date = d instanceof Date ? d : new Date(d + 'T00:00:00'); return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0'); }
   function addDays(dateStr, n) { const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() + n); return fmtDate(d); }
@@ -188,7 +188,7 @@
     const wrapper = document.getElementById('gantt-scroll-wrapper');
     if (!wrapper) return;
     const idx = getGanttDates().indexOf(todayStr());
-    if (idx >= 0) wrapper.scrollLeft = COL_W + idx * CELL_W - wrapper.clientWidth / 3;
+    if (idx >= 0) wrapper.scrollLeft = getColW() + idx * getCellW() - wrapper.clientWidth / 3;
   }
   function onGanttScroll() {
     const wrapper = document.getElementById('gantt-scroll-wrapper');
@@ -199,7 +199,7 @@
     if (wrapper.scrollLeft < 200) {
       ganttTotalDays += GANTT_EXTEND_DAYS;
       ganttStartDate.setDate(ganttStartDate.getDate() - GANTT_EXTEND_DAYS);
-      renderCalendar(); wrapper.scrollLeft = GANTT_EXTEND_DAYS * CELL_W + wrapper.scrollLeft;
+      renderCalendar(); wrapper.scrollLeft = GANTT_EXTEND_DAYS * getCellW() + wrapper.scrollLeft;
     }
     updateRange();
   }
@@ -245,19 +245,19 @@
     const todayFmt = todayStr();
     const defs = getActiveSteps(appState.topics[0] || {}).map(s => ({ key: s.key, name: s.name, color: s.color })) || [];
     const legend = document.getElementById('gantt-legend');
-    legend.innerHTML = (isMobile ? '' : '<span class="text-xs text-coffee-light">图例：</span>') + defs.map(s => `<span class="inline-flex items-center gap-1 text-xs"><span class="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded" style="background:${s.color}"></span>${isMobile?'':'<span>'+s.name+'</span>'}</span>`).join('');
+    legend.innerHTML = (isMobile() ? '' : '<span class="text-xs text-coffee-light">图例：</span>') + defs.map(s => `<span class="inline-flex items-center gap-1 text-xs"><span class="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded" style="background:${s.color}"></span>${isMobile()?'':'<span>'+s.name+'</span>'}</span>`).join('');
     updateRange();
 
-    let html = '<table class="border-collapse" style="min-width:' + (COL_W + dates.length * CELL_W) + 'px">';
-    html += '<thead><tr><th class="gantt-sticky bg-beige-50 p-1.5 sm:p-2 text-xs text-coffee-light text-left border-b border-r border-beige-200" style="min-width:' + COL_W + 'px;width:' + COL_W + 'px">选题</th>';
+    let html = '<table class="border-collapse" style="min-width:' + (getColW() + dates.length * getCellW()) + 'px">';
+    html += '<thead><tr><th class="gantt-sticky bg-beige-50 p-1.5 sm:p-2 text-xs text-coffee-light text-left border-b border-r border-beige-200" style="min-width:' + getColW() + 'px;width:' + getColW() + 'px">选题</th>';
     dates.forEach(d => {
       const isToday = d === todayFmt;
       const dow = new Date(d+'T00:00:00').getDay();
       const isWe = dow === 0 || dow === 6;
       const isFirst = d.endsWith('-01');
-      html += `<th class="p-0.5 sm:p-1 text-center border-b border-beige-200 ${isToday?'bg-brand/10':isWe?'bg-gray-50':''}" style="min-width:${CELL_W}px">
-        ${isFirst && !isMobile?'<div class="text-xs text-brand font-medium">'+d.slice(0,7)+'</div>':''}
-        <div class="text-xs text-coffee-light">${isMobile?['日','一','二','三','四','五','六'][dow]:['日','一','二','三','四','五','六'][dow]}</div>
+      html += `<th class="p-0.5 sm:p-1 text-center border-b border-beige-200 ${isToday?'bg-brand/10':isWe?'bg-gray-50':''}" style="min-width:${getCellW()}px">
+        ${isFirst && !isMobile()?'<div class="text-xs text-brand font-medium">'+d.slice(0,7)+'</div>':''}
+        <div class="text-xs text-coffee-light">${isMobile()?['日','一','二','三','四','五','六'][dow]:['日','一','二','三','四','五','六'][dow]}</div>
         <div class="text-xs font-medium ${isToday?'text-brand':'text-coffee'}">${d.slice(8)}</div>
       </th>`;
     });
@@ -270,25 +270,25 @@
       const notes = topic.notes || {};
 
       const isCompleted = topic.completed;
-      html += `<tr class="${isCompleted && showCompleted ? 'opacity-50' : ''}"><td class="gantt-sticky bg-white p-1.5 sm:p-2 border-b border-r border-beige-200" style="min-width:${COL_W}px;width:${COL_W}px">
+      html += `<tr class="${isCompleted && showCompleted ? 'opacity-50' : ''}"><td class="gantt-sticky bg-white p-1.5 sm:p-2 border-b border-r border-beige-200" style="min-width:${getColW()}px;width:${getColW()}px">
         <div class="flex items-center gap-1">${conflict.hasConflict?'<svg class="w-3 h-3 sm:w-3.5 sm:h-3.5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>':''}<span class="text-xs sm:text-sm font-medium truncate">${escapeHtml(topic.title)}</span>${isCompleted && showCompleted ? '<span class="completed-badge">已完成</span>' : ''}</div>
         <div class="text-xs text-coffee-light mt-0.5">${progress}%</div>
         ${topic.publishDate ? `<div class="text-xs text-brand font-medium mt-0.5">发布 ${shortDate(topic.publishDate)}</div>` : ''}</td>`;
 
       html += `<td colspan="${dates.length}" class="border-b border-beige-200 p-0">`;
-      const ROW_BASE = isMobile ? 40 : 52;
-      const LANE_H = isMobile ? 20 : 26;
+      const ROW_BASE = isMobile() ? 40 : 52;
+      const LANE_H = isMobile() ? 20 : 26;
       const hasNotes = Object.keys(notes).length > 0;
       const NOTE_H = hasNotes ? 16 : 0;
       const rowH = Math.max(ROW_BASE, blocks.maxLanes * LANE_H + 4 + NOTE_H);
-      html += `<div class="gantt-row" style="width:${dates.length * CELL_W}px;height:${rowH}px">`;
+      html += `<div class="gantt-row" style="width:${dates.length * getCellW()}px;height:${rowH}px">`;
 
       dates.forEach((d, i) => {
         const isToday = d === todayFmt;
         const dow = new Date(d+'T00:00:00').getDay();
         const isWe = dow === 0 || dow === 6;
         const note = notes[d];
-        html += `<div class="absolute ${isToday?'bg-brand/5':isWe?'bg-gray-50/50':''}" style="left:${i*CELL_W}px;top:0;width:${CELL_W}px;height:${rowH}px;border-right:1px solid #EFECE6">`;
+        html += `<div class="absolute ${isToday?'bg-brand/5':isWe?'bg-gray-50/50':''}" style="left:${i*getCellW()}px;top:0;width:${getCellW()}px;height:${rowH}px;border-right:1px solid #EFECE6">`;
         if (note) {
           html += `<div class="absolute bottom-0.5 left-0.5 right-0.5 text-xs truncate px-0.5 rounded" style="font-size:9px;background:#FFF3CD;color:#7B6B5A" title="${escapeHtml(note)}">${escapeHtml(note)}</div>`;
         }
@@ -296,8 +296,8 @@
       });
 
       blocks.forEach(b => {
-        const left = b.startIdx * CELL_W + 2;
-        const width = (b.endIdx - b.startIdx + 1) * CELL_W - 4;
+        const left = b.startIdx * getCellW() + 2;
+        const width = (b.endIdx - b.startIdx + 1) * getCellW() - 4;
         const top = b.lane * LANE_H + 2;
         html += `<div class="gantt-merged rounded px-1 sm:px-1.5 flex items-center text-xs font-medium truncate ${b.conflict?'conflict-pulse':''}" style="left:${left}px;width:${width}px;top:${top}px;height:${LANE_H - 4}px;background:${b.step.color}${b.step.done?'88':''};${b.step.done?'text-decoration:line-through':''}" title="${b.step.name} (${b.step.startDate} ~ ${b.step.endDate})">
           <span class="flex-1 truncate">${b.step.name}</span>

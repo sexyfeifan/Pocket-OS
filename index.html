@@ -88,7 +88,7 @@
     .date-cell:hover { background: rgba(179,125,86,0.06); }
     .time-meta { font-size: 10px; color: #A3968C; }
     /* Toast */
-    #toast-container { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+    #toast-container { position: fixed; top: 16px; right: 16px; z-index: 99999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
     .toast { pointer-events: auto; padding: 10px 16px; border-radius: 8px; font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); animation: toastIn 0.3s ease; max-width: 360px; }
     .toast.info { background: white; color: #4A3C31; border: 1px solid #E8E4DC; }
     .toast.warn { background: #FFF8E1; color: #7B6B5A; border: 1px solid #F0E6D0; }
@@ -720,57 +720,62 @@
     initMobile();
   }
 
-  function markUpdated(topic) { topic.updatedAt = nowISO(); autoUncomplete(topic); }
+  function markUpdated(topic) { topic.updatedAt = nowISO(); autoUncomplete(topic); markDirty(topic.id); }
 
   // ── 多点同步：按选题分别保存 ──
   let _dirtyTopics = new Set();
   let _settingsDirty = false;
   let saveAbort = null;
 
-  function saveData() {
+  function markDirty(topicId) { _dirtyTopics.add(topicId); }
+  function markSettingsDirty() { _settingsDirty = true; }
+
+  function saveData(dirtyTopicId) {
+    if (dirtyTopicId) markDirty(dirtyTopicId);
+    markSettingsDirty();
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(async () => {
-      appState.lastModified = nowISO();
-      localStorage.setItem('pocket_os_backup', JSON.stringify(appState));
+    saveTimer = setTimeout(flushSave, 300);
+  }
 
-      // 保存设置
-      if (_settingsDirty) {
-        _settingsDirty = false;
-        try { await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(appState.settings) }); } catch {}
-      }
+  async function flushSave() {
+    appState.lastModified = nowISO();
+    try { localStorage.setItem('pocket_os_backup', JSON.stringify(appState)); } catch {}
 
-      // 按选题分别保存
-      if (saveAbort) saveAbort.abort();
-      saveAbort = new AbortController();
-      const signal = saveAbort.signal;
+    if (saveAbort) saveAbort.abort();
+    saveAbort = new AbortController();
+    const signal = saveAbort.signal;
 
-      for (const topic of appState.topics) {
-        try {
-          const res = await fetch(`/api/topic/${topic.id}`, {
+    // 保存设置
+    if (_settingsDirty) {
+      _settingsDirty = false;
+      try { await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(appState.settings), signal }); } catch {}
+    }
+
+    // 只保存脏选题
+    const dirtyIds = new Set(_dirtyTopics);
+    _dirtyTopics.clear();
+    for (const topic of appState.topics) {
+      if (!dirtyIds.has(topic.id) && !dirtyIds.has('*')) continue;
+      try {
+        const res = await fetch(`/api/topic/${topic.id}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(topic), signal
+        });
+        if (res.status === 409) {
+          const data = await res.json();
+          topic._version = data.serverVersion;
+          const retry = await fetch(`/api/topic/${topic.id}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(topic), signal
           });
-          if (res.status === 409) {
-            const data = await res.json();
-            // 冲突：静默使用服务端版本 +1
-            topic._version = data.serverVersion;
-            const retry = await fetch(`/api/topic/${topic.id}`, {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(topic), signal
-            });
-            if (retry.ok) { const rd = await retry.json(); topic._version = rd._version; }
-          } else if (res.ok) {
-            const data = await res.json();
-            topic._version = data._version;
-          }
-        } catch (e) { if (e.name !== 'AbortError') {} }
-      }
-    }, 300);
+          if (retry.ok) { const rd = await retry.json(); topic._version = rd._version; }
+        } else if (res.ok) {
+          const data = await res.json();
+          topic._version = data._version;
+        }
+      } catch (e) { if (e.name !== 'AbortError') {} }
+    }
   }
-
-  // 标记选题为脏数据
-  function markDirty(topicId) { _dirtyTopics.add(topicId); }
-  function markSettingsDirty() { _settingsDirty = true; }
 
   // ── SSE 实时同步 ──
   let _sseSource = null;
@@ -819,9 +824,15 @@
           renderAll();
         }).catch(() => {});
       });
-      _sseSource.onerror = () => { setTimeout(connectSSE, 5000); };
+      _sseSource.onerror = () => {
+        _sseSource.close(); _sseSource = null;
+        const delay = Math.min(30000, 3000 * Math.pow(2, _sseRetryCount));
+        _sseRetryCount++;
+        setTimeout(connectSSE, delay);
+      };
     } catch {}
   }
+  let _sseRetryCount = 0;
 
   function exportData() {
     const a = document.createElement('a');

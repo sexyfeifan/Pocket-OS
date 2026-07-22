@@ -11,11 +11,11 @@ const DATA_DIR = path.join(__dirname, 'data');
 const TOPICS_DIR = path.join(DATA_DIR, 'topics');
 const APP_STATE_FILE = path.join(DATA_DIR, 'app_state.json');
 const LEGACY_DATA_FILE = path.join(DATA_DIR, 'schedule_data.json');
+const LOG_DIR = path.join(DATA_DIR, 'logs');
 const STARTUP_TIME = new Date().toISOString();
-const BUILD_VERSION = process.env.APP_VERSION || JSON.parse(fsSync.readFileSync(path.join(__dirname, 'package.json'), 'utf-8')).version;
+const BUILD_VERSION = process.env.APP_VERSION || (() => { try { return JSON.parse(fsSync.readFileSync(path.join(__dirname, 'package.json'), 'utf-8')).version; } catch { return 'dev'; } })();
 
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
 app.use('/index.html', express.static(path.join(__dirname, 'index.html')));
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
@@ -26,7 +26,6 @@ app.get('/icon-512.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-5
 app.get('/apple-touch-icon.png', (req, res) => res.sendFile(path.join(__dirname, 'apple-touch-icon.png')));
 app.get('/favicon.ico', (req, res) => res.sendFile(path.join(__dirname, 'favicon.ico')));
 app.get('/html2canvas.min.js', (req, res) => res.sendFile(path.join(__dirname, 'html2canvas.min.js')));
-app.get('/package.json', (req, res) => res.sendFile(path.join(__dirname, 'package.json')));
 
 // ── 初始化目录结构 ──
 if (!fsSync.existsSync(DATA_DIR)) fsSync.mkdirSync(DATA_DIR, { recursive: true });
@@ -211,7 +210,6 @@ app.get('/api/export', async (req, res) => {
 });
 
 // ── 操作日志 ──
-const LOG_DIR = path.join(DATA_DIR, 'logs');
 if (!fsSync.existsSync(LOG_DIR)) fsSync.mkdirSync(LOG_DIR, { recursive: true });
 
 function getLogFilePath(date) { return path.join(LOG_DIR, `activity_log_${date}.json`); }
@@ -297,10 +295,10 @@ app.get('/api/system', (req, res) => {
 });
 
 // ── 公开只读 API ──
-function checkApiKey(req, res, next) {
+async function checkApiKey(req, res, next) {
   const key = req.query.key || req.headers['x-api-key'] || '';
-  const settings = readJSON(SETTINGS_FILE, {});
-  const storedKey = settings.apiKey || '';
+  const appState = await readAppState();
+  const storedKey = appState?.settings?.apiKey || '';
   if (!storedKey) return res.status(403).json({ error: 'API Key 未设置，请在 Pocket OS 设置中生成' });
   if (key !== storedKey) return res.status(401).json({ error: 'API Key 无效' });
   next();
@@ -309,10 +307,11 @@ function checkApiKey(req, res, next) {
 // 生成 API Key
 app.post('/api/settings/apikey', express.json(), async (req, res) => {
   try {
-    const settings = readJSON(SETTINGS_FILE, {});
+    const appState = await readAppState();
+    if (!appState.settings) appState.settings = {};
     const key = 'pk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    settings.apiKey = key;
-    await writeJSON(SETTINGS_FILE, settings);
+    appState.settings.apiKey = key;
+    await atomicWrite(APP_STATE_FILE, appState);
     res.json({ success: true, apiKey: key });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -346,9 +345,9 @@ app.get('/api/public/topics', checkApiKey, async (req, res) => {
 app.get('/api/public/topics/:id', checkApiKey, async (req, res) => {
   try {
     const topicFile = path.join(TOPICS_DIR, `${req.params.id}.json`);
-    if (!fs.existsSync(topicFile)) return res.status(404).json({ error: '选题不存在' });
-    const topic = readJSON(topicFile);
-    res.json(topic);
+    if (!fsSync.existsSync(topicFile)) return res.status(404).json({ error: '选题不存在' });
+    const raw = await fs.readFile(topicFile, 'utf-8');
+    res.json(JSON.parse(raw));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

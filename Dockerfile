@@ -8,7 +8,7 @@ ENV APP_VERSION=${VERSION}
 COPY package.json package-lock.json ./
 RUN npm ci --production
 
-COPY server.js index.html canbox.html manifest.json ./
+COPY server.js index.html canbox.html manifest.json html2canvas.min.js ./
 COPY icon-192.png icon-512.png apple-touch-icon.png favicon.ico ./
 RUN mkdir -p /app/data/topics
 

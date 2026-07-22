@@ -25,6 +25,7 @@ app.get('/icon-192.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-1
 app.get('/icon-512.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-512.png')));
 app.get('/apple-touch-icon.png', (req, res) => res.sendFile(path.join(__dirname, 'apple-touch-icon.png')));
 app.get('/favicon.ico', (req, res) => res.sendFile(path.join(__dirname, 'favicon.ico')));
+app.get('/html2canvas.min.js', (req, res) => res.sendFile(path.join(__dirname, 'html2canvas.min.js')));
 app.get('/package.json', (req, res) => res.sendFile(path.join(__dirname, 'package.json')));
 
 // ── 初始化目录结构 ──

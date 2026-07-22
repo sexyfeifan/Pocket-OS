@@ -98,11 +98,26 @@
     @keyframes toastOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-10px); } }
     .completed-badge { display: inline-block; background: #E8F5E9; color: #2E7D32; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-left: 4px; }
     .step-delayed { border-left: 3px dashed #E8A87C !important; }
+    /* 移动端侧边栏 */
+    #sidebar { transition: transform 0.3s ease; }
+    @media (max-width: 768px) {
+      #sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 100; transform: translateX(-100%); }
+      #sidebar.open { transform: translateX(0); }
+      #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 99; }
+      #sidebar-overlay.open { display: block; }
+      main { margin-left: 0 !important; }
+    }
   </style>
 </head>
 <body class="min-h-screen flex">
 
   <div id="toast-container"></div>
+  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+  <!-- 移动端菜单按钮 -->
+  <button id="mobile-menu-btn" onclick="toggleSidebar()" class="fixed top-3 left-3 z-50 p-2 bg-white rounded-lg shadow-md border border-beige-200 md:hidden" style="display:none">
+    <svg class="w-5 h-5 text-coffee" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+  </button>
 
   <!-- 左侧边栏 -->
   <aside id="sidebar" class="w-64 min-h-screen bg-beige-100 border-r border-beige-200 flex flex-col flex-shrink-0">
@@ -439,6 +454,22 @@
   function nowISO() { return new Date().toISOString(); }
   function shortTime(iso) { if (!iso) return ''; const d = new Date(iso); return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 
+  // 移动端侧边栏
+  function isMobile() { return window.innerWidth <= 768; }
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebar-overlay').classList.toggle('open');
+  }
+  function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('open');
+  }
+  function initMobile() {
+    const btn = document.getElementById('mobile-menu-btn');
+    if (btn) btn.style.display = isMobile() ? 'block' : 'none';
+  }
+  window.addEventListener('resize', () => { initMobile(); });
+
   // Toast 通知
   function showToast(message, type = 'info', duration = 4000) {
     const container = document.getElementById('toast-container');
@@ -686,6 +717,7 @@
     autoCheckOverdueSteps();
     renderAll();
     loadSystemInfo();
+    initMobile();
   }
 
   function markUpdated(topic) { topic.updatedAt = nowISO(); autoUncomplete(topic); }
@@ -819,19 +851,27 @@
     switchView('edit');
   }
 
-  function deleteTopic(id) {
+  async function deleteTopic(id) {
     if (!confirm('确定删除？')) return;
     const t = appState.topics.find(t => t.id === id);
     logAction('topic.delete', id, { title: t?.title });
+    try {
+      const res = await fetch(`/api/topic/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('删除失败');
+    } catch (e) {
+      showToast('删除失败: ' + e.message, 'error');
+      return;
+    }
     appState.topics = appState.topics.filter(t => t.id !== id);
     if (selectedTopicId === id) selectedTopicId = appState.topics.length ? appState.topics[0].id : null;
-    saveData();
     if (currentView === 'edit') switchView('calendar');
     else renderAll();
+    showToast('已删除', 'success');
   }
 
   function selectTopic(id) {
     selectedTopicId = id;
+    closeSidebar();
     switchView('edit');
   }
 
@@ -842,6 +882,7 @@
   // ── 视图切换 ──
   function switchView(view) {
     currentView = view;
+    closeSidebar();
     document.getElementById('view-calendar').classList.toggle('hidden', view !== 'calendar');
     document.getElementById('view-card').classList.toggle('hidden', view !== 'card');
     document.getElementById('view-edit').classList.toggle('hidden', view !== 'edit');
@@ -2891,6 +2932,6 @@
     if (e.key==='Escape') { closeSettings(); closeCategory(); closeStepPopup(); }
   });
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="/html2canvas.min.js"></script>
 </body>
 </html>

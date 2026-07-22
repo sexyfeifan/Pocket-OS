@@ -895,6 +895,7 @@
   // ── 视图切换 ──
   function switchView(view) {
     currentView = view;
+    editMode = false;
     closeSidebar();
     document.getElementById('view-calendar').classList.toggle('hidden', view !== 'calendar');
     document.getElementById('view-card').classList.toggle('hidden', view !== 'card');
@@ -1484,6 +1485,8 @@
   }
 
   // ── 单选题编辑页 ──
+  let editMode = false;
+
   function renderEditPage() {
     const topic = appState.topics.find(t => t.id === selectedTopicId);
     if (!topic) { switchView('calendar'); return; }
@@ -1499,192 +1502,244 @@
       if (todayIdx >= 0) wrapper.scrollLeft = Math.max(0, todayIdx * CELL_W - 200);
     }
 
-    // 编辑卡片
     const el = document.getElementById('edit-card-content');
     const progress = calcProgress(topic);
     const conflict = checkConflict(getActiveSteps(topic));
-    const isEditing = editingTitleId === topic.id;
     const pubDate = topic.publishDate || '';
     const daysLeft = pubDate ? daysBetween(todayStr(), pubDate) : null;
     const steps = topic.productionSteps || [];
-
-    let html = `<div id="card-${topic.id}" class="topic-card bg-white rounded-2xl p-6 shadow-sm border border-[#EFECE6] text-coffee flex flex-col gap-4 relative">`;
-
-    // 头部
-    html += `<div>
-      <div class="flex items-start justify-between mb-3">
-        <div class="flex-1 min-w-0">
-          <div class="relative inline-block mb-2">
-            <button onclick="toggleCategory('${topic.id}')" class="category-badge inline-flex items-center gap-1 bg-sage-bg text-sage-text text-xs rounded px-2 py-1 font-medium">${escapeHtml(topic.category || '内容')} <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>
-          </div>
-          <div class="flex items-center gap-2">
-            ${isEditing
-              ? `<input id="title-input-${topic.id}" value="${escapeHtml(topic.title)}" onchange="commitTitle('${topic.id}',this.value)" onblur="commitTitle('${topic.id}',this.value)" onkeydown="if(event.key==='Enter'){commitTitle('${topic.id}',this.value)}" class="text-lg font-bold text-coffee border border-beige-300 rounded px-2 py-0.5 bg-white w-full" autofocus>`
-              : `<h3 class="text-lg font-bold text-coffee truncate title-display" onclick="startEditTitle('${topic.id}')">${escapeHtml(topic.title)}</h3>
-                 <button onclick="startEditTitle('${topic.id}')" class="p-0.5 text-coffee-light hover:text-brand rounded flex-shrink-0"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
-                 <button onclick="deleteTopic('${topic.id}')" class="p-0.5 text-coffee-light hover:text-red-500 rounded flex-shrink-0 ml-auto"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>`
-            }
-          </div>
-          <div class="time-meta mt-1">创建 ${shortTime(topic.createdAt)} · 编辑 ${shortTime(topic.updatedAt)}</div>
-        </div>
-        <div class="text-right ml-4 flex-shrink-0">
-          <div class="text-xs text-coffee-light mb-0.5">发布日期</div>
-          <div class="big-date text-coffee">${pubDate ? shortDate(pubDate) : '—'}</div>
-          ${daysLeft !== null ? (daysLeft > 0 ? `<div class="text-xs text-coffee-light mt-0.5">${daysLeft} 天后</div>` : (daysLeft === 0 ? '<div class="text-xs text-brand font-medium mt-0.5">今天发布</div>' : `<div class="text-xs text-danger-text font-medium mt-0.5">已超 ${Math.abs(daysLeft)} 天</div>`)) : ''}
-        </div>
-      </div>
-      <div class="flex items-center gap-3">
-        <div class="flex-1 h-2 bg-beige-100 rounded-full overflow-hidden"><div class="h-2 rounded-full progress-bar" style="width:${progress}%;background:${progress===100?'#38A169':'#B37D56'}"></div></div>
-        <span class="text-sm font-medium ${progress===100?'text-green-600':'text-coffee-light'}">${progress}%</span>
-      </div>
-    </div>`;
-
-    // 发布日期编辑 + TML 粘贴
-    html += `<div class="flex items-center gap-3 flex-wrap">
-      <div class="flex items-center gap-2">
-        <label class="text-xs text-coffee-light">发布日期</label>
-        <input type="date" value="${pubDate}" onchange="updatePublishDate('${topic.id}',this.value)" class="text-sm border border-beige-200 rounded-lg px-3 py-1.5 bg-beige-50 text-coffee">
-      </div>
-      <button onclick="openTmlModal('${topic.id}')" class="text-xs text-brand border border-brand/40 rounded-lg px-3 py-1.5 hover:bg-brand hover:text-white transition-colors flex items-center gap-1">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-        粘贴 TML
-      </button>
-      <button onclick="copyTml('${topic.id}')" class="text-xs text-coffee-light border border-beige-300 rounded-lg px-3 py-1.5 hover:bg-beige-100 transition-colors flex items-center gap-1">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-        复制 TML
-      </button>
-      ${topic.completed
-        ? `<button onclick="uncompleteProject('${topic.id}')" class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5 hover:bg-green-100 transition-colors">撤回完成</button>`
-        : `<button onclick="completeProject('${topic.id}')" class="text-xs text-brand border border-brand/40 rounded-lg px-3 py-1.5 hover:bg-brand hover:text-white transition-colors">标记完成</button>`
-      }
-      <button onclick="exportTml('${topic.id}')" class="text-xs text-coffee-light border border-beige-300 rounded-lg px-3 py-1.5 hover:bg-beige-100 transition-colors flex items-center gap-1">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-        导出 TML
-      </button>
-    </div>`;
-
-    // 前置准备
-    html += `<div>
-      <h4 class="text-xs text-coffee-light mb-2">前置准备 · 可编辑</h4>
-      <div class="flex items-center gap-2 mb-2">
-        <input id="prep-input-${topic.id}" type="text" placeholder="增加项目备注" class="todo-input flex-1 text-sm border border-beige-200 rounded-lg px-3 py-2 bg-beige-50 text-coffee placeholder-coffee-light/50" onkeydown="if(event.key==='Enter'){addPrepFromInput('${topic.id}')}">
-        <button onclick="addPrepFromInput('${topic.id}')" class="w-9 h-9 bg-brand text-white rounded-lg flex items-center justify-center hover:bg-brand-dark transition-colors flex-shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg></button>
-      </div>
-      <div class="space-y-1.5" id="prep-list-${topic.id}">`;
+    const activeSteps = getActiveSteps(topic);
     const tasks = topic.preparationTasks || [];
-    if (!tasks.length) {
-      html += `<p class="text-xs text-coffee-light text-center py-3">暂无前置任务，可自行添加</p>`;
-    } else {
-      tasks.forEach((task, idx) => {
-        html += `<div class="flex items-center gap-2 group">
-          <input type="checkbox" ${task.done?'checked':''} onchange="togglePrep('${topic.id}',${idx})" class="w-4 h-4 rounded accent-[#B37D56]">
-          <input value="${escapeHtml(task.text)}" onchange="updatePrepText('${topic.id}',${idx},this.value)" placeholder="输入准备事项..." class="flex-1 text-sm ${task.done?'line-through text-coffee-light':'text-coffee'} border-none bg-transparent">
-          <button onclick="deletePrep('${topic.id}',${idx})" class="opacity-0 group-hover:opacity-100 p-0.5 text-coffee-light hover:text-red-500 transition-all"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-        </div>`;
-      });
-    }
-    html += `</div></div>`;
-
-    // TML 便签
-    if (topic.tmlNote) {
-      html += `<div>
-        <div class="flex items-center justify-between mb-1">
-          <h4 class="text-xs text-coffee-light">TML 记录</h4>
-          <div class="flex items-center gap-2">
-            <button onclick="reparseTml('${topic.id}')" class="text-xs text-brand border border-brand/30 rounded px-2 py-0.5 hover:bg-brand hover:text-white transition-colors">重新识别</button>
-            <button onclick="editTmlNote('${topic.id}')" class="text-xs text-brand hover:text-brand-dark">编辑</button>
-          </div>
-        </div>
-        <div id="tml-note-display" class="bg-[#FFFDF5] border border-[#F0E6D0] rounded-lg p-3 text-sm text-coffee whitespace-pre-wrap font-mono leading-relaxed cursor-pointer" onclick="editTmlNote('${topic.id}')">${escapeHtml(topic.tmlNote)}</div>
-      </div>`;
-    }
-
-    // 发布平台
-    html += `<div>
-      <h4 class="text-xs text-coffee-light mb-2">发布平台</h4>
-      <div class="flex flex-wrap gap-1.5">
-        ${PLATFORMS.map(p => `<button onclick="togglePlatform('${topic.id}','${p}')" class="text-xs px-2 py-1 rounded-full border transition-colors ${(topic.platforms||[]).includes(p)?'bg-brand text-white border-brand':'border-beige-300 text-coffee-light hover:border-brand/50'}">${p}</button>`).join('')}
-      </div>
-    </div>`;
-
-    // Canbox 绑定信息
-    if (topic.canboxImport || topic.canboxLink) {
-      const cb = topic.canboxImport || topic.canboxLink || {};
-      html += `<div class="bg-sage-bg rounded-lg p-3 text-xs">
-        <div class="flex items-center justify-between mb-1">
-          <span class="font-semibold text-sage-text">📋 通告信息</span>
-          <button onclick="unlinkCanbox('${topic.id}')" class="text-coffee-light hover:text-red-500" title="解除绑定"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-        </div>
-        <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-          ${cb.location ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#6BA3BE] flex-shrink-0"></span><span class="text-coffee-light">拍摄地</span> <span class="font-medium text-coffee">${escapeHtml(cb.location)}</span></div>` : ''}
-          ${cb.type ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#C8A2E8] flex-shrink-0"></span><span class="text-coffee-light">类型</span> <span class="font-medium text-coffee">${escapeHtml(cb.type)}</span></div>` : ''}
-          ${cb.shootStart && cb.shootEnd ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#A5C8E1] flex-shrink-0"></span><span class="text-coffee-light">拍摄段</span> <span class="font-medium text-coffee">${cb.segments && cb.segments.length > 1 ? cb.segments.map(s => s.start === s.end ? shortDate(s.start) : shortDate(s.start)+'~'+shortDate(s.end)).join(', ') : cb.shootStart + ' ~ ' + cb.shootEnd}</span></div>` : ''}
-          ${cb.director ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#E8A87C] flex-shrink-0"></span><span class="text-coffee-light">导演</span> <span class="font-medium text-coffee">${escapeHtml(cb.director)}</span></div>` : ''}
-          ${cb.photographer ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#85CDCA] flex-shrink-0"></span><span class="text-coffee-light">摄影</span> <span class="font-medium text-coffee">${escapeHtml(cb.photographer)}</span></div>` : ''}
-          ${cb.production ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#D5A5E1] flex-shrink-0"></span><span class="text-coffee-light">制片</span> <span class="font-medium text-coffee">${escapeHtml(cb.production)}</span></div>` : ''}
-          ${cb.rd ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#A3D9A5] flex-shrink-0"></span><span class="text-coffee-light">研发</span> <span class="font-medium text-coffee">${escapeHtml(cb.rd)}</span></div>` : ''}
-          ${cb.business ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#F2D98B] flex-shrink-0"></span><span class="text-coffee-light">商务</span> <span class="font-medium text-coffee">${escapeHtml(cb.business)}</span></div>` : ''}
-          ${cb.audio ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#E1A5A5] flex-shrink-0"></span><span class="text-coffee-light">收音</span> <span class="font-medium text-coffee">${escapeHtml(cb.audio)}</span></div>` : ''}
-          ${cb.operational ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#B8D4E3] flex-shrink-0"></span><span class="text-coffee-light">运营</span> <span class="font-medium text-coffee">${escapeHtml(cb.operational)}</span></div>` : ''}
-          ${cb.laodao ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#B37D56] flex-shrink-0"></span><span class="font-medium text-brand">老刀出镜</span></div>` : ''}
-          ${cb.isAdvertiser ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#D4A574] flex-shrink-0"></span><span class="text-coffee-light">广告商单</span> <span class="font-medium text-coffee">是</span>${cb.advertiserNo ? ` <span class="text-coffee-light">(${escapeHtml(cb.advertiserNo)})</span>` : ''}</div>` : ''}
-          ${cb.orientations && cb.orientations.length ? `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#7EB5C4] flex-shrink-0"></span><span class="text-coffee-light">拍摄方向</span> <span class="font-medium text-coffee">${cb.orientations.join(', ')}</span></div>` : ''}
-        </div>
-      </div>`;
-    } else {
-      html += `<button onclick="openCanboxLink('${topic.id}')" class="text-xs text-brand border border-brand rounded-lg px-3 py-1.5 hover:bg-brand hover:text-white transition-colors flex items-center gap-1.5">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
-        绑定通告
-      </button>`;
-    }
-
-    // 制作流程
     const cb = topic.canboxImport || {};
     const hasShootDates = cb.shootStart && cb.shootEnd;
-    html += `<div>
-      <div class="flex items-center justify-between mb-2">
-        <h4 class="text-xs text-coffee-light">制作流程 · 自动倒排</h4>
-        ${hasShootDates ? `<button onclick="importShootDates('${topic.id}')" class="text-xs text-brand border border-brand/40 rounded px-2 py-0.5 hover:bg-brand hover:text-white transition-colors">引入拍摄段时间</button>` : ''}
-      </div>
-      <div class="space-y-1">`;
+    const plats = topic.platforms || [];
 
-    steps.forEach((step, idx) => {
+    // ══════════════════════════════════════
+    //  展示态（只读）
+    // ══════════════════════════════════════
+    let html = `<div id="card-${topic.id}" class="topic-card bg-white rounded-2xl p-6 shadow-sm border border-[#EFECE6] text-coffee flex flex-col gap-4 relative">`;
+
+    // 头部按钮行
+    html += `<div class="flex items-center justify-between mb-2">
+      <div class="flex items-center gap-2">
+        ${topic.completed ? '<span class="completed-badge">已完成</span>' : ''}
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="copyTml('${topic.id}')" class="text-xs text-coffee-light border border-beige-300 rounded-lg px-3 py-1.5 hover:bg-beige-100 transition-colors">复制 TML</button>
+        <button onclick="editMode=true;renderEditPage()" class="text-xs text-brand border border-brand rounded-lg px-4 py-1.5 hover:bg-brand hover:text-white transition-colors font-medium">编辑</button>
+      </div>
+    </div>`;
+
+    // 分类 + 标题 + 发布日期
+    html += `<div class="flex items-start justify-between">
+      <div class="flex-1 min-w-0">
+        <span class="inline-block bg-sage-bg text-sage-text text-xs rounded px-2 py-0.5 font-medium mb-2">${escapeHtml(topic.category || '内容')}</span>
+        <h3 class="text-lg font-bold text-coffee">${escapeHtml(topic.title)}</h3>
+        <div class="time-meta mt-1">创建 ${shortTime(topic.createdAt)} · 编辑 ${shortTime(topic.updatedAt)}</div>
+      </div>
+      <div class="text-right ml-4 flex-shrink-0">
+        <div class="text-xs text-coffee-light mb-0.5">发布日期</div>
+        <div class="big-date text-coffee">${pubDate ? shortDate(pubDate) : '—'}</div>
+        ${daysLeft !== null ? (daysLeft > 0 ? `<div class="text-xs text-coffee-light mt-0.5">${daysLeft} 天后</div>` : (daysLeft === 0 ? '<div class="text-xs text-brand font-medium mt-0.5">今天发布</div>' : `<div class="text-xs text-danger-text font-medium mt-0.5">已超 ${Math.abs(daysLeft)} 天</div>`)) : ''}
+      </div>
+    </div>`;
+
+    // 进度条
+    html += `<div class="flex items-center gap-3">
+      <div class="flex-1 h-2 bg-beige-100 rounded-full overflow-hidden"><div class="h-2 rounded-full progress-bar" style="width:${progress}%;background:${progress===100?'#38A169':'#B37D56'}"></div></div>
+      <span class="text-sm font-medium ${progress===100?'text-green-600':'text-coffee-light'}">${progress}%</span>
+    </div>`;
+
+    // 发布平台（只显示已选）
+    if (plats.length) {
+      html += `<div class="flex flex-wrap gap-1.5">${plats.map(p => `<span class="text-xs px-2.5 py-1 rounded-full bg-brand text-white">${p}</span>`).join('')}</div>`;
+    }
+
+    // 通告信息
+    if (cb.shootStart || cb.location || cb.director) {
+      html += `<div class="bg-sage-bg rounded-lg p-3 text-xs">
+        <span class="font-semibold text-sage-text block mb-1.5">通告信息</span>
+        <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">`;
+      if (cb.shootStart && cb.shootEnd) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#A5C8E1]"></span><span class="text-coffee-light">拍摄段</span> <span class="font-medium text-coffee">${cb.shootStart} ~ ${cb.shootEnd}</span></div>`;
+      if (cb.location) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#6BA3BE]"></span><span class="text-coffee-light">拍摄地</span> <span class="font-medium text-coffee">${escapeHtml(cb.location)}</span></div>`;
+      if (cb.director) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#E8A87C]"></span><span class="text-coffee-light">导演</span> <span class="font-bold text-coffee">${escapeHtml(cb.director)}</span></div>`;
+      if (cb.photographer) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#85CDCA]"></span><span class="text-coffee-light">摄影</span> <span class="font-bold text-coffee">${escapeHtml(cb.photographer)}</span></div>`;
+      if (cb.production) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#D5A5E1]"></span><span class="text-coffee-light">制片</span> <span class="font-bold text-coffee">${escapeHtml(cb.production)}</span></div>`;
+      if (cb.rd) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#A3D9A5]"></span><span class="text-coffee-light">研发</span> <span class="font-bold text-coffee">${escapeHtml(cb.rd)}</span></div>`;
+      if (cb.business) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#F2D98B]"></span><span class="text-coffee-light">商务</span> <span class="font-bold text-coffee">${escapeHtml(cb.business)}</span></div>`;
+      if (cb.audio) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#E1A5A5]"></span><span class="text-coffee-light">收音</span> <span class="font-bold text-coffee">${escapeHtml(cb.audio)}</span></div>`;
+      if (cb.operational) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#B8D4E3]"></span><span class="text-coffee-light">运营</span> <span class="font-bold text-coffee">${escapeHtml(cb.operational)}</span></div>`;
+      if (cb.laodao) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#B37D56]"></span><span class="font-bold text-brand">老刀出镜</span></div>`;
+      if (cb.advertiserNo) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#D4A574]"></span><span class="text-coffee-light">商单</span> <span class="font-bold text-coffee">${escapeHtml(cb.advertiserNo)}</span></div>`;
+      html += `</div></div>`;
+    }
+
+    // 制作流程（只读）
+    html += `<div>
+      <h4 class="text-xs text-coffee-light mb-2">制作流程</h4>
+      <div class="space-y-1">`;
+    steps.forEach(step => {
       const isCleared = step.cleared;
       const isC = !isCleared && conflict.hasConflict && conflict.stepKey === step.key;
       const isRange = !isCleared && step.startDate !== (step.endDate || step.startDate);
-      html += `<div class="wf-row flex items-center gap-2 py-1.5 px-2 rounded group ${isCleared?'cleared':''} ${isC?'bg-danger-bg':''}" data-step-idx="${idx}" draggable="true" ondragstart="stepDragStart(event,'${topic.id}',${idx})" ondragover="stepDragOver(event)" ondrop="stepDrop(event,'${topic.id}',${idx})" ondragend="stepDragEnd(event)">
-        <span class="cursor-grab text-coffee-light hover:text-coffee select-none px-0.5 flex-shrink-0" title="按住拖拽排序">⠿</span>
-        <input type="checkbox" ${step.done?'checked':''} onchange="toggleStep('${topic.id}',${idx})" class="w-4 h-4 rounded accent-[#38A169]">
+      html += `<div class="flex items-center gap-2 py-1.5 px-2 rounded ${isCleared?'opacity-40':''} ${isC?'bg-danger-bg':''}">
+        <div class="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${step.done?'border-green-500 bg-green-500':'border-beige-300'}">${step.done?'<svg class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>':''}</div>
         <span class="text-sm ${step.done?'line-through ':''}${isCleared?'text-coffee-light/60':'text-coffee'} w-20 flex-shrink-0 truncate">${step.name}</span>
         ${isCleared
-          ? `<span class="text-xs text-coffee-light flex-1">未安排</span><button onclick="restoreStep('${topic.id}',${idx})" class="text-xs text-brand border border-brand/30 rounded px-2 py-0.5 hover:bg-brand hover:text-white transition-colors flex-shrink-0">安排日期</button>`
-          : `<input type="date" value="${step.startDate}" onchange="updateStepDate('${topic.id}',${idx},'startDate',this.value)" class="text-xs border border-beige-200 rounded px-1.5 py-0.5 bg-white ${isC?'text-danger-text font-medium':step.delayed?'text-orange-600':'text-coffee-light'}" style="width:110px">
-            <span class="text-xs text-beige-300">~</span>
-            <input type="date" value="${step.endDate||step.startDate}" onchange="updateStepDate('${topic.id}',${idx},'endDate',this.value)" class="text-xs border border-beige-200 rounded px-1.5 py-0.5 bg-white ${isC?'text-danger-text font-medium':step.delayed?'text-orange-600':'text-coffee-light'}" style="width:110px">
-            <span class="text-xs ${isRange?'text-brand':'text-beige-300'} w-10 text-right">${isRange?daysBetween(step.startDate,step.endDate||step.startDate)+'天':''}</span>
-            <button onclick="delayStep('${topic.id}',${idx},1)" class="opacity-0 group-hover:opacity-100 p-0.5 text-coffee-light hover:text-orange-500 transition-all flex-shrink-0" title="延期1天"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></button>
-            <button onclick="clearStep('${topic.id}',${idx})" class="opacity-0 group-hover:opacity-100 p-0.5 text-coffee-light hover:text-orange-500 transition-all flex-shrink-0" title="清除日期"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg></button>`
+          ? '<span class="text-xs text-coffee-light">未安排</span>'
+          : `<span class="text-xs ${isC?'text-danger-text font-medium':step.delayed?'text-orange-600':'text-coffee-light'}">${step.startDate || '—'}</span>
+            ${isRange ? `<span class="text-xs text-beige-300">~</span><span class="text-xs ${isC?'text-danger-text font-medium':'text-coffee-light'}">${step.endDate || ''}</span><span class="text-xs text-brand ml-1">${daysBetween(step.startDate, step.endDate)}天</span>` : ''}`
         }
-        <button onclick="deleteStep('${topic.id}','${step.key}')" class="opacity-0 group-hover:opacity-100 p-0.5 text-coffee-light hover:text-red-500 transition-all flex-shrink-0" title="删除工序"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+        ${step.delayed ? '<span class="text-xs text-orange-500 ml-1">延期</span>' : ''}
       </div>`;
     });
+    html += `</div></div>`;
 
-    html += `</div>`;
-    // 添加新工序按钮
-    html += `<button onclick="addCustomStep('${topic.id}')" class="mt-2 flex items-center gap-1.5 text-xs text-brand hover:text-brand-dark transition-colors">
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-      添加工序
-    </button>`;
-    html += `</div>`;
+    // 前置准备（只读）
+    if (tasks.length) {
+      html += `<div><h4 class="text-xs text-coffee-light mb-2">前置准备</h4><div class="space-y-1">`;
+      tasks.forEach(task => {
+        html += `<div class="flex items-center gap-2 py-1 px-2">
+          <div class="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${task.done?'border-green-500 bg-green-500':'border-beige-300'}">${task.done?'<svg class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>':''}</div>
+          <span class="text-sm ${task.done?'line-through text-coffee-light':'text-coffee'}">${escapeHtml(task.text)}</span>
+        </div>`;
+      });
+      html += `</div></div>`;
+    }
 
+    // TML 便签（只读）
+    if (topic.tmlNote) {
+      html += `<div><h4 class="text-xs text-coffee-light mb-2">TML 记录</h4>
+        <div class="bg-[#FFFDF5] border border-[#F0E6D0] rounded-lg p-3 text-sm text-coffee whitespace-pre-wrap font-mono leading-relaxed">${escapeHtml(topic.tmlNote)}</div></div>`;
+    }
+
+    // 冲突提示
     if (conflict.hasConflict) {
       html += `<div class="bg-danger-bg text-danger-text border border-danger-border rounded-lg px-4 py-3 text-sm">存在延期任务</div>`;
+    }
+
+    // ══════════════════════════════════════
+    //  编辑态（点击编辑后展开）
+    // ══════════════════════════════════════
+    if (editMode) {
+      const isEditing = editingTitleId === topic.id;
+      html += `<div class="border-t-2 border-brand/20 pt-4 mt-2">
+        <div class="flex items-center justify-between mb-4">
+          <h4 class="text-sm font-semibold text-brand">编辑模式</h4>
+          <button onclick="editMode=false;renderEditPage()" class="text-xs text-coffee-light border border-beige-300 rounded-lg px-4 py-1.5 hover:bg-beige-100 transition-colors">完成编辑</button>
+        </div>`;
+
+      // 标题编辑
+      html += `<div class="mb-4">
+        <label class="text-xs text-coffee-light mb-1 block">标题</label>
+        <input value="${escapeHtml(topic.title)}" onchange="commitTitle('${topic.id}',this.value)" class="text-lg font-bold text-coffee border border-beige-300 rounded px-2 py-1 bg-white w-full">
+      </div>`;
+
+      // 分类切换
+      html += `<div class="mb-4">
+        <label class="text-xs text-coffee-light mb-1 block">分类</label>
+        <div class="flex gap-1.5">${CATEGORIES.map(c => `<button onclick="selectCategory('${topic.id}','${c}')" class="text-xs px-2.5 py-1 rounded-full border transition-colors ${topic.category===c?'bg-brand text-white border-brand':'border-beige-300 text-coffee-light hover:border-brand/50'}">${c}</button>`).join('')}</div>
+      </div>`;
+
+      // 发布日期 + 按钮
+      html += `<div class="flex items-center gap-3 flex-wrap mb-4">
+        <div class="flex items-center gap-2">
+          <label class="text-xs text-coffee-light">发布日期</label>
+          <input type="date" value="${pubDate}" onchange="updatePublishDate('${topic.id}',this.value)" class="text-sm border border-beige-200 rounded-lg px-3 py-1.5 bg-beige-50 text-coffee">
+        </div>
+        <button onclick="openTmlModal('${topic.id}')" class="text-xs text-brand border border-brand/40 rounded-lg px-3 py-1.5 hover:bg-brand hover:text-white transition-colors">粘贴 TML</button>
+        ${topic.completed
+          ? `<button onclick="uncompleteProject('${topic.id}')" class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5 hover:bg-green-100 transition-colors">撤回完成</button>`
+          : `<button onclick="completeProject('${topic.id}')" class="text-xs text-brand border border-brand/40 rounded-lg px-3 py-1.5 hover:bg-brand hover:text-white transition-colors">标记完成</button>`
+        }
+        <button onclick="exportTml('${topic.id}')" class="text-xs text-coffee-light border border-beige-300 rounded-lg px-3 py-1.5 hover:bg-beige-100 transition-colors">导出 TML</button>
+      </div>`;
+
+      // 前置准备（可编辑）
+      html += `<div class="mb-4">
+        <h4 class="text-xs text-coffee-light mb-2">前置准备 · 可编辑</h4>
+        <div class="flex items-center gap-2 mb-2">
+          <input id="prep-input-${topic.id}" type="text" placeholder="增加项目备注" class="todo-input flex-1 text-sm border border-beige-200 rounded-lg px-3 py-2 bg-beige-50 text-coffee placeholder-coffee-light/50" onkeydown="if(event.key==='Enter'){addPrepFromInput('${topic.id}')}">
+          <button onclick="addPrepFromInput('${topic.id}')" class="w-9 h-9 bg-brand text-white rounded-lg flex items-center justify-center hover:bg-brand-dark transition-colors flex-shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg></button>
+        </div>`;
+      if (!tasks.length) {
+        html += `<p class="text-xs text-coffee-light text-center py-2">暂无前置任务</p>`;
+      } else {
+        tasks.forEach((task, idx) => {
+          html += `<div class="flex items-center gap-2 group mb-1">
+            <input type="checkbox" ${task.done?'checked':''} onchange="togglePrep('${topic.id}',${idx})" class="w-4 h-4 rounded accent-[#B37D56]">
+            <input value="${escapeHtml(task.text)}" onchange="updatePrepText('${topic.id}',${idx},this.value)" class="flex-1 text-sm ${task.done?'line-through text-coffee-light':'text-coffee'} border-none bg-transparent">
+            <button onclick="deletePrep('${topic.id}',${idx})" class="opacity-0 group-hover:opacity-100 p-0.5 text-coffee-light hover:text-red-500 transition-all"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+          </div>`;
+        });
+      }
+      html += `</div>`;
+
+      // 发布平台（可切换）
+      html += `<div class="mb-4">
+        <h4 class="text-xs text-coffee-light mb-2">发布平台</h4>
+        <div class="flex flex-wrap gap-1.5">${PLATFORMS.map(p => `<button onclick="togglePlatform('${topic.id}','${p}')" class="text-xs px-2 py-1 rounded-full border transition-colors ${plats.includes(p)?'bg-brand text-white border-brand':'border-beige-300 text-coffee-light hover:border-brand/50'}">${p}</button>`).join('')}</div>
+      </div>`;
+
+      // 通告绑定
+      if (!cb.shootStart && !cb.location) {
+        html += `<div class="mb-4"><button onclick="openCanboxLink('${topic.id}')" class="text-xs text-brand border border-brand rounded-lg px-3 py-1.5 hover:bg-brand hover:text-white transition-colors">绑定通告</button></div>`;
+      } else {
+        html += `<div class="mb-4 flex items-center gap-2">
+          <span class="text-xs text-coffee-light">通告已绑定</span>
+          <button onclick="unlinkCanbox('${topic.id}')" class="text-xs text-red-500 hover:text-red-700">解除绑定</button>
+          ${hasShootDates ? `<button onclick="importShootDates('${topic.id}')" class="text-xs text-brand border border-brand/40 rounded px-2 py-0.5 hover:bg-brand hover:text-white transition-colors">引入拍摄段时间</button>` : ''}
+        </div>`;
+      }
+
+      // 制作流程（可编辑）
+      html += `<div class="mb-4">
+        <h4 class="text-xs text-coffee-light mb-2">制作流程 · 可编辑</h4>
+        <div class="space-y-1">`;
+      steps.forEach((step, idx) => {
+        const isCleared = step.cleared;
+        const isC = !isCleared && conflict.hasConflict && conflict.stepKey === step.key;
+        const isRange = !isCleared && step.startDate !== (step.endDate || step.startDate);
+        html += `<div class="wf-row flex items-center gap-2 py-1.5 px-2 rounded group ${isCleared?'cleared':''} ${isC?'bg-danger-bg':''}" data-step-idx="${idx}" draggable="true" ondragstart="stepDragStart(event,'${topic.id}',${idx})" ondragover="stepDragOver(event)" ondrop="stepDrop(event,'${topic.id}',${idx})" ondragend="stepDragEnd(event)">
+          <span class="cursor-grab text-coffee-light hover:text-coffee select-none px-0.5 flex-shrink-0">⠿</span>
+          <input type="checkbox" ${step.done?'checked':''} onchange="toggleStep('${topic.id}',${idx})" class="w-4 h-4 rounded accent-[#38A169]">
+          <span class="text-sm ${step.done?'line-through ':''}${isCleared?'text-coffee-light/60':'text-coffee'} w-20 flex-shrink-0 truncate">${step.name}</span>
+          ${isCleared
+            ? `<span class="text-xs text-coffee-light flex-1">未安排</span><button onclick="restoreStep('${topic.id}',${idx})" class="text-xs text-brand border border-brand/30 rounded px-2 py-0.5 hover:bg-brand hover:text-white transition-colors">安排日期</button>`
+            : `<input type="date" value="${step.startDate}" onchange="updateStepDate('${topic.id}',${idx},'startDate',this.value)" class="text-xs border border-beige-200 rounded px-1.5 py-0.5 bg-white ${isC?'text-danger-text font-medium':step.delayed?'text-orange-600':'text-coffee-light'}" style="width:110px">
+              <span class="text-xs text-beige-300">~</span>
+              <input type="date" value="${step.endDate||step.startDate}" onchange="updateStepDate('${topic.id}',${idx},'endDate',this.value)" class="text-xs border border-beige-200 rounded px-1.5 py-0.5 bg-white ${isC?'text-danger-text font-medium':step.delayed?'text-orange-600':'text-coffee-light'}" style="width:110px">
+              <span class="text-xs ${isRange?'text-brand':'text-beige-300'} w-10 text-right">${isRange?daysBetween(step.startDate,step.endDate||step.startDate)+'天':''}</span>
+              <button onclick="delayStep('${topic.id}',${idx},1)" class="opacity-0 group-hover:opacity-100 p-0.5 text-coffee-light hover:text-orange-500 transition-all" title="延期1天"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></button>
+              <button onclick="clearStep('${topic.id}',${idx})" class="opacity-0 group-hover:opacity-100 p-0.5 text-coffee-light hover:text-orange-500 transition-all" title="清除"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg></button>`
+          }
+          <button onclick="deleteStep('${topic.id}','${step.key}')" class="opacity-0 group-hover:opacity-100 p-0.5 text-coffee-light hover:text-red-500 transition-all" title="删除"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+        </div>`;
+      });
+      html += `<button onclick="addCustomStep('${topic.id}')" class="mt-2 flex items-center gap-1.5 text-xs text-brand hover:text-brand-dark transition-colors">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>添加工序</button></div></div>`;
+
+      // TML 便签（可编辑）
+      if (topic.tmlNote) {
+        html += `<div class="mb-4">
+          <div class="flex items-center justify-between mb-1">
+            <h4 class="text-xs text-coffee-light">TML 记录</h4>
+            <div class="flex items-center gap-2">
+              <button onclick="reparseTml('${topic.id}')" class="text-xs text-brand border border-brand/30 rounded px-2 py-0.5 hover:bg-brand hover:text-white transition-colors">重新识别</button>
+              <button onclick="editTmlNote('${topic.id}')" class="text-xs text-brand hover:text-brand-dark">编辑</button>
+            </div>
+          </div>
+          <div id="tml-note-display" class="bg-[#FFFDF5] border border-[#F0E6D0] rounded-lg p-3 text-sm text-coffee whitespace-pre-wrap font-mono leading-relaxed cursor-pointer" onclick="editTmlNote('${topic.id}')">${escapeHtml(topic.tmlNote)}</div>
+        </div>`;
+      }
+
+      html += `</div>`; // 编辑态结束
     }
 
     html += '</div>';
     el.innerHTML = html;
 
-    if (editingTitleId) {
+    if (editMode && editingTitleId) {
       const input = document.getElementById('title-input-' + editingTitleId);
       if (input) { input.focus(); input.select(); }
     }

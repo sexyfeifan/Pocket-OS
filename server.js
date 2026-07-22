@@ -274,8 +274,10 @@ app.get('/api/canbox/proxy', async (req, res) => {
   const headers = { 'Accept': 'application/json' };
   if (req.query.password) headers['X-Admin-Password'] = req.query.password;
   if (req.query.token) headers['Authorization'] = `Bearer ${req.query.token}`;
+  const appState = await readAppState();
+  const allowSelfSigned = appState?.settings?.canbox?.allowSelfSigned || false;
   const transport = parsed.protocol === 'https:' ? https : http;
-  const proxyReq = transport.get(targetUrl, { headers, rejectUnauthorized: true }, proxyRes => {
+  const proxyReq = transport.get(targetUrl, { headers, rejectUnauthorized: !allowSelfSigned }, proxyRes => {
     let body = '';
     proxyRes.on('data', chunk => body += chunk);
     proxyRes.on('end', () => res.status(proxyRes.statusCode).setHeader('Content-Type', proxyRes.headers['content-type'] || 'application/json').send(body));

@@ -325,6 +325,13 @@
             <label class="text-xs text-coffee-light w-16">密码</label>
             <input id="canbox-password" type="password" placeholder="管理员密码（可选）" class="flex-1 text-sm border border-beige-200 rounded-lg px-3 py-1.5 bg-beige-50 text-coffee">
           </div>
+          <div class="flex items-center gap-2 mb-2">
+            <label class="text-xs text-coffee-light w-16">SSL</label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input id="canbox-self-signed" type="checkbox" class="w-4 h-4 rounded accent-[#B37D56]">
+              <span class="text-xs text-coffee-light">允许自签名证书（内网部署）</span>
+            </label>
+          </div>
           <div class="flex items-center gap-2">
             <button onclick="fetchCanboxProjects()" class="px-4 py-1.5 text-sm bg-brand text-white rounded-lg hover:bg-brand-dark transition-colors">拉取项目</button>
             <span id="canbox-status" class="text-xs text-coffee-light"></span>
@@ -634,12 +641,15 @@
     const today = todayStr();
     let checked = 0;
     appState.topics.filter(t => !t.completed).forEach(t => {
+      let topicDirty = false;
       (t.productionSteps || []).forEach(s => {
         if (!s.done && !s.cleared && s.endDate && s.endDate < today) {
           s.done = true;
           checked++;
+          topicDirty = true;
         }
       });
+      if (topicDirty) markDirty(t.id);
     });
     if (checked > 0) { saveData(); showToast(`${checked} 个过期工序已自动勾选`, 'info', 3000); }
   }
@@ -649,7 +659,6 @@
     const t = appState.topics.find(t => t.id === id);
     if (!t || !t.productionSteps[idx]) return;
     const step = t.productionSteps[idx];
-    const oldEnd = step.endDate;
     step.endDate = addDays(step.endDate, days || 1);
     step.duration = daysBetween(step.startDate, step.endDate) + 1;
     step.delayed = true;
@@ -894,6 +903,9 @@
 
   // ── 视图切换 ──
   function switchView(view) {
+    if (editMode && currentView === 'edit' && view !== 'edit') {
+      if (!confirm('正在编辑中，确认离开？未保存的更改将保留。')) return;
+    }
     currentView = view;
     editMode = false;
     closeSidebar();
@@ -1525,7 +1537,7 @@
         ${topic.completed ? '<span class="completed-badge">已完成</span>' : ''}
       </div>
       <div class="flex items-center gap-2">
-        <button onclick="copyTml('${topic.id}')" class="text-xs text-coffee-light border border-beige-300 rounded-lg px-3 py-1.5 hover:bg-beige-100 transition-colors">复制 TML</button>
+        <button onclick="copyTml('${topic.id}')" class="text-xs text-coffee-light border border-beige-300 rounded-lg px-3 py-1.5 hover:bg-beige-100 transition-colors">导出 TML</button>
         <button onclick="editMode=true;renderEditPage()" class="text-xs text-brand border border-brand rounded-lg px-4 py-1.5 hover:bg-brand hover:text-white transition-colors font-medium">编辑</button>
       </div>
     </div>`;
@@ -2076,6 +2088,7 @@
     const cfg = appState.settings?.canbox || {};
     document.getElementById('canbox-url').value = cfg.url || '';
     document.getElementById('canbox-password').value = cfg.password || '';
+    document.getElementById('canbox-self-signed').checked = cfg.allowSelfSigned || false;
     document.getElementById('canbox-projects').classList.add('hidden');
     document.getElementById('canbox-status').textContent = '';
     document.getElementById('canbox-import-status').textContent = '';
@@ -2094,6 +2107,7 @@
     if (!appState.settings.canbox) appState.settings.canbox = {};
     appState.settings.canbox.url = url;
     appState.settings.canbox.password = password;
+    appState.settings.canbox.allowSelfSigned = document.getElementById('canbox-self-signed').checked;
     saveData();
 
     const status = document.getElementById('canbox-status');

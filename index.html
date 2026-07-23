@@ -201,7 +201,7 @@
           <h3 class="text-sm font-semibold text-coffee">选题概览</h3>
           <span class="text-xs text-coffee-light">按发布日期排序</span>
         </div>
-        <div id="topic-summaries" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+        <div id="topic-summaries" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"></div>
       </div>
     </div>
 
@@ -1049,17 +1049,21 @@
       const progress = calcProgress(topic);
       const conflict = checkConflict(getActiveSteps(topic));
       const blocks = buildMergedBlocks(getActiveSteps(topic), dates);
+      const isPend = topic.projectStatus === 'pending';
 
-      html += `<tr><td class="gantt-sticky bg-white p-2 border-b border-r border-beige-200 cursor-pointer hover:bg-beige-50" style="min-width:${COL_W}px;width:${COL_W}px" onclick="selectTopic('${topic.id}')">
-        <div class="flex items-center gap-1">${conflict.hasConflict?'<svg class="w-3.5 h-3.5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>':''}<span class="text-sm font-medium truncate">${escapeHtml(topic.title)}</span></div>
-        <div class="text-xs text-coffee-light mt-0.5">${topic.category||''} · ${progress}%</div>
-        ${topic.publishDate ? `<div class="text-xs text-brand font-medium mt-0.5">发布 ${shortDate(topic.publishDate)}</div>` : ''}</td>`;
+      html += `<tr><td class="gantt-sticky bg-white p-2 border-b border-r border-beige-200 cursor-pointer hover:bg-beige-50 ${isPend?'border-l-2 border-l-orange-400':''}" style="min-width:${COL_W}px;width:${COL_W}px" onclick="selectTopic('${topic.id}')">
+        <div class="flex items-center gap-1">${conflict.hasConflict?'<svg class="w-3.5 h-3.5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>':''}${isPend?'<svg class="w-3.5 h-3.5 text-orange-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>':''}<span class="text-sm font-medium truncate">${escapeHtml(topic.title)}</span></div>
+        <div class="text-xs text-coffee-light mt-0.5">${topic.category||''} · ${progress}%${isPend?' · <span class="text-orange-500">变动中</span>':''}</div>
+        ${topic.publishDate ? `<div class="text-xs text-brand font-medium mt-0.5">发布 ${shortDate(topic.publishDate)}</div>` : `<div class="text-xs text-orange-400 mt-0.5">日期未定</div>`}</td>`;
 
       html += `<td colspan="${dates.length}" class="border-b border-beige-200 p-0">`;
       const ROW_BASE = 52;
       const LANE_H = 26;
       const rowH = Math.max(ROW_BASE, blocks.maxLanes * LANE_H + 4);
       html += `<div class="gantt-row" style="width:${dates.length * CELL_W}px;height:${rowH}px">`;
+      if (isPend) {
+        html += `<div class="absolute inset-0 pending-stripe" style="z-index:1;pointer-events:none"></div>`;
+      }
 
       // 日期格子背景 + 备注标记 (R05)
       dates.forEach((d, i) => {
@@ -1349,51 +1353,64 @@
       const conflict = checkConflict(getActiveSteps(topic));
       const pubDate = topic.publishDate || '';
       const daysLeft = pubDate ? daysBetween(todayStr(), pubDate) : null;
-      const summarySteps = getActiveSteps(topic).filter(s => SUMMARY_KEYS.includes(s.key));
+      const allSteps = getActiveSteps(topic);
+      const isPend = topic.projectStatus === 'pending';
+      const cb = topic.canboxImport || {};
+      const plats = topic.platforms || [];
 
-      let html = `<div id="summary-${topic.id}" class="bg-white rounded-2xl p-5 shadow-sm border border-[#EFECE6] text-coffee flex flex-col gap-3 hover:shadow-md transition-shadow">`;
-      html += `<div class="flex items-start justify-between">
-        <div class="flex-1 min-w-0 cursor-pointer" onclick="selectTopic('${topic.id}')">
-          <span class="inline-block bg-sage-bg text-sage-text text-xs rounded px-2 py-0.5 font-medium mb-1.5">${escapeHtml(topic.category || '内容')}</span>
-          <h4 class="text-base font-bold text-coffee truncate">${escapeHtml(topic.title)}</h4>
-          <div class="flex items-center gap-2 mt-1">${(topic.platforms||[]).map(p=>`<span class="text-xs text-coffee-light">${p}</span>`).join('')}</div>
-        </div>
-        <div class="flex items-start gap-2 flex-shrink-0 ml-2">
-          <div class="text-right cursor-pointer" onclick="selectTopic('${topic.id}')">
-            <div class="text-2xl font-bold text-coffee leading-none">${pubDate ? shortDate(pubDate) : '—'}</div>
-            ${daysLeft !== null ? (daysLeft > 0 ? `<div class="text-xs text-coffee-light mt-0.5">${daysLeft} 天后</div>` : (daysLeft === 0 ? '<div class="text-xs text-brand font-medium mt-0.5">今天</div>' : `<div class="text-xs text-danger-text font-medium mt-0.5">超 ${Math.abs(daysLeft)} 天</div>`)) : ''}
+      let html = `<div id="summary-${topic.id}" class="bg-white rounded-xl shadow-sm border ${isPend?'border-orange-300':'border-[#EFECE6]'} text-coffee overflow-hidden hover:shadow-md transition-shadow cursor-pointer" onclick="selectTopic('${topic.id}')">`;
+
+      // ── 标题行 ──
+      html += `<div class="px-4 pt-3 pb-2 flex items-start justify-between">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-1.5 mb-0.5">
+            <span class="inline-block bg-sage-bg text-sage-text text-xs rounded px-1.5 py-0.5 font-medium">${escapeHtml(topic.category || '内容')}</span>
+            ${plats.map(p => `<span class="text-xs text-coffee-light">${p}</span>`).join('')}
+            ${isPend ? '<span class="text-xs text-orange-500 font-medium">变动中</span>' : ''}
+            ${topic.completed ? '<span class="completed-badge">已完成</span>' : ''}
           </div>
-          <button onclick="event.stopPropagation();deleteTopic('${topic.id}')" class="p-1 text-coffee-light hover:text-red-500 rounded hover:bg-red-50 transition-colors" title="删除选题"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+          <h4 class="text-sm font-bold text-coffee truncate">${escapeHtml(topic.title)}</h4>
+        </div>
+        <div class="flex items-start gap-2 flex-shrink-0 ml-3">
+          <div class="text-right">
+            <div class="text-xl font-bold text-coffee leading-none">${pubDate ? shortDate(pubDate) : '—'}</div>
+            ${pubDate ? (daysLeft !== null ? (daysLeft > 0 ? `<div class="text-xs text-coffee-light">${daysLeft}天</div>` : (daysLeft === 0 ? '<div class="text-xs text-brand font-medium">今天</div>' : `<div class="text-xs text-danger-text font-medium">超${Math.abs(daysLeft)}天</div>`)) : '') : '<div class="text-xs text-orange-500">未定</div>'}
+          </div>
+          <button onclick="event.stopPropagation();deleteTopic('${topic.id}')" class="p-1 text-coffee-light hover:text-red-500 rounded hover:bg-red-50 transition-colors" title="删除"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
         </div>
       </div>`;
-      html += `<div class="flex items-center gap-2 cursor-pointer" onclick="selectTopic('${topic.id}')"><div class="flex-1 h-1.5 bg-beige-100 rounded-full overflow-hidden"><div class="h-1.5 rounded-full progress-bar" style="width:${progress}%;background:${progress===100?'#38A169':'#B37D56'}"></div></div><span class="text-xs text-coffee-light">${progress}%</span></div>`;
-      html += `<div class="space-y-1">`;
-      summarySteps.forEach(step => {
+
+      // ── 进度条 ──
+      html += `<div class="px-4 pb-2"><div class="flex items-center gap-2"><div class="flex-1 h-1 bg-beige-100 rounded-full overflow-hidden"><div class="h-1 rounded-full progress-bar" style="width:${progress}%;background:${progress===100?'#38A169':'#B37D56'}"></div></div><span class="text-xs text-coffee-light">${progress}%</span></div></div>`;
+
+      // ── 工序横排 ──
+      html += `<div class="px-4 pb-2 flex flex-wrap gap-x-3 gap-y-1">`;
+      allSteps.forEach(step => {
         const isC = conflict.hasConflict && conflict.stepKey === step.key;
-        html += `<div class="flex items-center gap-2 py-1 px-1 rounded ${isC?'bg-danger-bg':''}" onclick="event.stopPropagation();toggleStepByKey('${topic.id}','${step.key}')">
-          <div class="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 cursor-pointer ${step.done?'border-green-500 bg-green-500':'border-beige-300'}">${step.done?'<svg class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>':''}</div>
-          <span class="text-xs ${step.done?'line-through text-coffee-light':'text-coffee'} flex-1 truncate">${step.name}</span>
-          <span class="text-xs ${isC?'text-danger-text font-medium':'text-coffee-light'}">${shortDate(step.startDate)}</span>
+        html += `<div class="flex items-center gap-1 ${isC?'text-danger-text':''}" onclick="event.stopPropagation();toggleStepByKey('${topic.id}','${step.key}')">
+          <div class="w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 cursor-pointer ${step.done?'border-green-500 bg-green-500':'border-beige-300'}">${step.done?'<svg class="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>':''}</div>
+          <span class="text-xs ${step.done?'line-through text-coffee-light':'text-coffee'}">${step.name}</span>
+          ${step.startDate ? `<span class="text-xs text-coffee-light">${shortDate(step.startDate)}</span>` : ''}
         </div>`;
       });
       html += `</div>`;
-      // 通告信息
-      const cb = topic.canboxImport;
-      if (cb) {
-        html += `<div class="text-xs text-coffee-light space-y-0.5 px-1">`;
-        if (cb.location) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#6BA3BE] flex-shrink-0"></span><span class="text-coffee-light">拍摄地</span> <span class="font-medium text-coffee">${escapeHtml(cb.location)}</span></div>`;
-        if (cb.director) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#E8A87C] flex-shrink-0"></span><span class="text-coffee-light">导演</span> <span class="font-medium text-coffee">${escapeHtml(cb.director)}</span></div>`;
-        if (cb.photographer) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#85CDCA] flex-shrink-0"></span><span class="text-coffee-light">摄影</span> <span class="font-medium text-coffee">${escapeHtml(cb.photographer)}</span></div>`;
-        if (cb.production) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#D5A5E1] flex-shrink-0"></span><span class="text-coffee-light">制片</span> <span class="font-medium text-coffee">${escapeHtml(cb.production)}</span></div>`;
-        if (cb.rd) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#A3D9A5] flex-shrink-0"></span><span class="text-coffee-light">研发</span> <span class="font-medium text-coffee">${escapeHtml(cb.rd)}</span></div>`;
-        if (cb.business) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#F2D98B] flex-shrink-0"></span><span class="text-coffee-light">商务</span> <span class="font-medium text-coffee">${escapeHtml(cb.business)}</span></div>`;
-        if (cb.audio) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#E1A5A5] flex-shrink-0"></span><span class="text-coffee-light">收音</span> <span class="font-medium text-coffee">${escapeHtml(cb.audio)}</span></div>`;
-        if (cb.operational) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#B8D4E3] flex-shrink-0"></span><span class="text-coffee-light">运营</span> <span class="font-medium text-coffee">${escapeHtml(cb.operational)}</span></div>`;
-        if (cb.laodao) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#B37D56] flex-shrink-0"></span><span class="font-medium text-brand">老刀出镜</span></div>`;
-        if (cb.advertiserNo) html += `<div class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-[#D4A574] flex-shrink-0"></span><span class="text-coffee-light">商单</span> <span class="font-medium text-coffee">${escapeHtml(cb.advertiserNo)}</span></div>`;
+
+      // ── 通告信息（紧凑一行流）──
+      if (cb.shootStart || cb.location || cb.director) {
+        html += `<div class="px-4 pb-3 pt-1 border-t border-beige-100 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-coffee-light">`;
+        if (cb.shootStart && cb.shootEnd) html += `<span><span class="inline-block w-1.5 h-1.5 rounded-full bg-[#A5C8E1] mr-1"></span>${cb.shootStart}~${cb.shootEnd}</span>`;
+        if (cb.location) html += `<span><span class="inline-block w-1.5 h-1.5 rounded-full bg-[#6BA3BE] mr-1"></span>${escapeHtml(cb.location)}</span>`;
+        if (cb.director) html += `<span><span class="inline-block w-1.5 h-1.5 rounded-full bg-[#E8A87C] mr-1"></span>导演 ${escapeHtml(cb.director)}</span>`;
+        if (cb.photographer) html += `<span><span class="inline-block w-1.5 h-1.5 rounded-full bg-[#85CDCA] mr-1"></span>摄影 ${escapeHtml(cb.photographer)}</span>`;
+        if (cb.production) html += `<span><span class="inline-block w-1.5 h-1.5 rounded-full bg-[#D5A5E1] mr-1"></span>制片 ${escapeHtml(cb.production)}</span>`;
+        if (cb.laodao) html += `<span><span class="inline-block w-1.5 h-1.5 rounded-full bg-[#B37D56] mr-1"></span>老刀</span>`;
+        if (cb.advertiserNo) html += `<span><span class="inline-block w-1.5 h-1.5 rounded-full bg-[#D4A574] mr-1"></span>${escapeHtml(cb.advertiserNo)}</span>`;
         html += `</div>`;
       }
-      if (conflict.hasConflict) html += `<div class="text-xs text-danger-text bg-danger-bg rounded px-2 py-1.5 border border-danger-border">存在延期任务</div>`;
+
+      // ── 延期警告 ──
+      if (conflict.hasConflict) html += `<div class="px-4 pb-3"><div class="text-xs text-danger-text bg-danger-bg rounded px-2 py-1 border border-danger-border">存在延期任务</div></div>`;
+
       html += '</div>';
       return html;
     }).join('');

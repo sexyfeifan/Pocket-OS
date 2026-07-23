@@ -104,7 +104,14 @@ async function atomicWrite(filePath, data) {
 app.get('/api/data', async (req, res) => {
   try {
     const [appState, topics] = await Promise.all([readAppState(), readAllTopics()]);
-    res.json({ ...appState, topics });
+    // 动态版本号：取所有 updatedAt 最大值的时间戳部分
+    let maxTs = Date.parse(appState.lastModified || 0) || 0;
+    for (const t of topics) {
+      const ts = Date.parse(t.updatedAt || 0) || 0;
+      if (ts > maxTs) maxTs = ts;
+    }
+    const dataVersion = BUILD_VERSION + '.' + Math.floor(maxTs / 1000);
+    res.json({ ...appState, version: dataVersion, topics });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

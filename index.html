@@ -98,6 +98,11 @@
     @keyframes toastOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-10px); } }
     .completed-badge { display: inline-block; background: #E8F5E9; color: #2E7D32; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-left: 4px; }
     .step-delayed { border-left: 3px dashed #E8A87C !important; }
+    .pending-banner { background: #FFF3CD; border: 1px solid #F0E6D0; color: #7B6B5A; }
+    .pending-card { border: 2px dashed #E8A87C !important; }
+    .pending-stripe { background-image: repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(232,168,124,0.15) 4px, rgba(232,168,124,0.15) 8px); }
+    .pending-step { position: relative; }
+    .pending-step::after { content: ''; position: absolute; inset: 0; background-image: repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(232,168,124,0.2) 3px, rgba(232,168,124,0.2) 6px); border-radius: inherit; pointer-events: none; }
     /* 移动端侧边栏 */
     #sidebar { transition: transform 0.3s ease; }
     @media (max-width: 768px) {
@@ -713,6 +718,7 @@
     if (!appState.settings.stepDefs?.length) appState.settings.stepDefs = JSON.parse(JSON.stringify(DEFAULT_STEP_DEFS));
     appState.topics.forEach(t => {
       if (!t.category) t.category = '内容';
+      if (!t.projectStatus) t.projectStatus = 'normal';
       if (!t.createdAt) t.createdAt = appState.lastModified || nowISO();
       if (!t.updatedAt) t.updatedAt = appState.lastModified || nowISO();
       // 补齐被删除的默认工序（cleared 状态）
@@ -862,12 +868,13 @@
   function createTopic() {
     const topic = {
       id: genId(), title: '新选题', category: '内容', projectType: '自有项目', platforms: [],
-      publishDate: addDays(todayStr(), 14), preparationTasks: [], productionSteps: [],
-      createdAt: nowISO(), updatedAt: nowISO()
+      publishDate: '', preparationTasks: [], productionSteps: [],
+      projectStatus: 'normal', createdAt: nowISO(), updatedAt: nowISO()
     };
-    topic.productionSteps = reverseSchedule(topic.publishDate, null, false);
+    topic.productionSteps = reverseSchedule(topic.publishDate || addDays(todayStr(), 14));
     appState.topics.push(topic);
     selectedTopicId = topic.id;
+    editMode = true;
     saveData();
     logAction('topic.create', topic.id, { title: topic.title });
     switchView('edit');
@@ -1445,8 +1452,9 @@
     const act = t.id === selectedTopicId;
     const plats = (t.platforms || []).join(' · ');
     const isDone = t.completed;
-    return `<div onclick="selectTopic('${t.id}')" class="topic-item ${act?'active':''} rounded-lg px-3 py-2.5 mb-1 cursor-pointer relative ${isDone?'opacity-60':''}">
-      <div class="flex items-center justify-between"><span class="text-sm font-medium truncate flex-1 ${act?'':'text-coffee'}">${escapeHtml(t.title)}</span>${isDone?'<span class="completed-badge">已完成</span>':''}${conflict.hasConflict?'<svg class="w-4 h-4 text-red-500 flex-shrink-0 ml-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>':''}</div>
+    const isPend = t.projectStatus === 'pending';
+    return `<div onclick="selectTopic('${t.id}')" class="topic-item ${act?'active':''} rounded-lg px-3 py-2.5 mb-1 cursor-pointer relative ${isDone?'opacity-60':''} ${isPend?'border-l-2 border-l-orange-400':''}">
+      <div class="flex items-center justify-between"><span class="text-sm font-medium truncate flex-1 ${act?'':'text-coffee'}">${escapeHtml(t.title)}</span>${isDone?'<span class="completed-badge">已完成</span>':''}${isPend?'<span class="text-xs text-orange-500 ml-1">变动中</span>':''}${conflict.hasConflict?'<svg class="w-4 h-4 text-red-500 flex-shrink-0 ml-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>':''}</div>
       ${plats ? `<div class="text-xs ${act?'text-white/50':'text-coffee-light/60'} truncate" style="font-size:10px;margin-top:1px">${plats}</div>` : ''}
       <div class="flex items-center justify-between mt-1.5"><span class="text-xs ${act?'text-white/70':'text-coffee-light'}">${t.category||'内容'} · ${t.publishDate ? t.publishDate : '<span class="text-orange-500">日期未定</span>'}</span><span class="text-xs ${act?'text-white/70':'text-coffee-light'}">${progress}%</span></div>
       <div class="w-full h-1 ${act?'bg-white/30':'bg-beige-200'} rounded-full mt-1.5"><div class="h-1 rounded-full progress-bar ${act?'bg-white':'bg-brand'}" style="width:${progress}%"></div></div>
@@ -1530,23 +1538,39 @@
     // ══════════════════════════════════════
     //  展示态（只读）
     // ══════════════════════════════════════
-    let html = `<div id="card-${topic.id}" class="topic-card bg-white rounded-2xl p-6 shadow-sm border border-[#EFECE6] text-coffee flex flex-col gap-4 relative">`;
+    let html = `<div id="card-${topic.id}" class="topic-card bg-white rounded-2xl p-6 shadow-sm border border-[#EFECE6] text-coffee flex flex-col gap-4 relative ${isPending(topic)?'pending-card':''}">`;
+
+    // 变动中横幅
+    if (isPending(topic)) {
+      html += `<div class="pending-banner rounded-lg px-4 py-2.5 flex items-center gap-2 -mx-6 -mt-6 mb-2 px-6 py-3" style="border-radius:1rem 1rem 0 0">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+        <span class="text-sm font-medium">项目变动中 — 待确认新排期</span>
+        ${topic.pendingReason ? `<span class="text-xs opacity-70">（${escapeHtml(topic.pendingReason)}）</span>` : ''}
+        <button onclick="confirmNewSchedule('${topic.id}')" class="ml-auto text-xs font-medium px-2 py-0.5 rounded border border-current hover:bg-white/50 transition-colors">确认新排期</button>
+      </div>`;
+    }
 
     // 头部按钮行
     html += `<div class="flex items-center justify-between mb-2">
       <div class="flex items-center gap-2">
         ${topic.completed ? '<span class="completed-badge">已完成</span>' : ''}
+        ${isPending(topic) ? '<span class="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 font-medium">变动中</span>' : ''}
       </div>
       <div class="flex items-center gap-2">
         <button onclick="copyTml('${topic.id}')" class="text-xs text-coffee-light border border-beige-300 rounded-lg px-3 py-1.5 hover:bg-beige-100 transition-colors">导出 TML</button>
+        ${!topic.completed ? `<button onclick="completeProject('${topic.id}')" class="text-xs text-green-600 border border-green-200 rounded-lg px-3 py-1.5 hover:bg-green-50 transition-colors">标记完成</button>` : ''}
+        ${!isPending(topic) ? `<button onclick="markProjectPending('${topic.id}')" class="text-xs text-orange-500 border border-orange-200 rounded-lg px-3 py-1.5 hover:bg-orange-50 transition-colors">项目变动</button>` : ''}
         <button onclick="editMode=true;renderEditPage()" class="text-xs text-brand border border-brand rounded-lg px-4 py-1.5 hover:bg-brand hover:text-white transition-colors font-medium">编辑</button>
       </div>
     </div>`;
 
-    // 分类 + 标题 + 发布日期
+    // 分类 + 标题 + 发布日期 + 平台
     html += `<div class="flex items-start justify-between">
       <div class="flex-1 min-w-0">
-        <span class="inline-block bg-sage-bg text-sage-text text-xs rounded px-2 py-0.5 font-medium mb-2">${escapeHtml(topic.category || '内容')}</span>
+        <div class="flex items-center gap-2 mb-1">
+          <span class="inline-block bg-sage-bg text-sage-text text-xs rounded px-2 py-0.5 font-medium">${escapeHtml(topic.category || '内容')}</span>
+          ${plats.map(p => `<span class="text-xs px-2 py-0.5 rounded-full bg-brand text-white">${p}</span>`).join('')}
+        </div>
         <h3 class="text-lg font-bold text-coffee">${escapeHtml(topic.title)}</h3>
         <div class="time-meta mt-1">创建 ${shortTime(topic.createdAt)} · 编辑 ${shortTime(topic.updatedAt)}</div>
       </div>
@@ -1562,11 +1586,6 @@
       <div class="flex-1 h-2 bg-beige-100 rounded-full overflow-hidden"><div class="h-2 rounded-full progress-bar" style="width:${progress}%;background:${progress===100?'#38A169':'#B37D56'}"></div></div>
       <span class="text-sm font-medium ${progress===100?'text-green-600':'text-coffee-light'}">${progress}%</span>
     </div>`;
-
-    // 发布平台（只显示已选）
-    if (plats.length) {
-      html += `<div class="flex flex-wrap gap-1.5">${plats.map(p => `<span class="text-xs px-2.5 py-1 rounded-full bg-brand text-white">${p}</span>`).join('')}</div>`;
-    }
 
     // 通告信息
     if (cb.shootStart || cb.location || cb.director) {
@@ -1595,15 +1614,17 @@
       const isCleared = step.cleared;
       const isC = !isCleared && conflict.hasConflict && conflict.stepKey === step.key;
       const isRange = !isCleared && step.startDate !== (step.endDate || step.startDate);
-      html += `<div class="flex items-center gap-2 py-1.5 px-2 rounded ${isCleared?'opacity-40':''} ${isC?'bg-danger-bg':''}">
+      const isPend = isPending(topic) && !isCleared;
+      html += `<div class="flex items-center gap-2 py-1.5 px-2 rounded ${isCleared?'opacity-40':''} ${isC?'bg-danger-bg':''} ${isPend?'pending-step':''}">
         <div class="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${step.done?'border-green-500 bg-green-500':'border-beige-300'}">${step.done?'<svg class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>':''}</div>
         <span class="text-sm ${step.done?'line-through ':''}${isCleared?'text-coffee-light/60':'text-coffee'} w-20 flex-shrink-0 truncate">${step.name}</span>
         ${isCleared
           ? '<span class="text-xs text-coffee-light">未安排</span>'
-          : `<span class="text-xs ${isC?'text-danger-text font-medium':step.delayed?'text-orange-600':'text-coffee-light'}">${step.startDate || '—'}</span>
+          : `<span class="text-xs ${isC?'text-danger-text font-medium':step.delayed?'text-orange-600':isPend?'text-orange-500':'text-coffee-light'}">${step.startDate || '—'}</span>
             ${isRange ? `<span class="text-xs text-beige-300">~</span><span class="text-xs ${isC?'text-danger-text font-medium':'text-coffee-light'}">${step.endDate || ''}</span><span class="text-xs text-brand ml-1">${daysBetween(step.startDate, step.endDate)}天</span>` : ''}`
         }
         ${step.delayed ? '<span class="text-xs text-orange-500 ml-1">延期</span>' : ''}
+        ${isPend ? '<span class="text-xs text-orange-500 ml-1">待确认</span>' : ''}
       </div>`;
     });
     html += `</div></div>`;
@@ -1644,7 +1665,10 @@
       html += `<div class="border-t-2 border-brand/20 pt-4 mt-2">
         <div class="flex items-center justify-between mb-4">
           <h4 class="text-sm font-semibold text-brand">编辑模式</h4>
-          <button onclick="editMode=false;renderEditPage()" class="text-xs text-coffee-light border border-beige-300 rounded-lg px-4 py-1.5 hover:bg-beige-100 transition-colors">完成编辑</button>
+          <div class="flex items-center gap-2">
+            ${isPending(topic) ? `<button onclick="confirmNewSchedule('${topic.id}')" class="text-xs text-orange-600 border border-orange-300 bg-orange-50 rounded-lg px-3 py-1.5 hover:bg-orange-100 transition-colors font-medium">确认新排期</button>` : ''}
+            <button onclick="editMode=false;renderEditPage()" class="text-xs text-coffee-light border border-beige-300 rounded-lg px-4 py-1.5 hover:bg-beige-100 transition-colors">完成编辑</button>
+          </div>
         </div>`;
 
       // 标题编辑
@@ -1828,6 +1852,29 @@
     markUpdated(t); saveData(); renderAll();
     showToast('发布日期已设为未定', 'info');
   }
+
+  function markProjectPending(id) {
+    const t = appState.topics.find(t => t.id === id); if (!t) return;
+    const reason = prompt('变动原因（可选）：\n如：拍摄延期 / 场地未定 / 客户调整', '');
+    if (reason === null) return; // 用户取消
+    t.projectStatus = 'pending';
+    t.pendingReason = reason || '';
+    t.pendingAt = nowISO();
+    markDirty(id); saveData(); logAction('topic.pending', id, { reason }); renderAll();
+    showToast(`「${t.title}」已标记为变动中`, 'warn');
+  }
+
+  function confirmNewSchedule(id) {
+    const t = appState.topics.find(t => t.id === id); if (!t) return;
+    if (!confirm('确认新排期？将清除变动状态。')) return;
+    t.projectStatus = 'normal';
+    delete t.pendingReason;
+    delete t.pendingAt;
+    markDirty(id); saveData(); logAction('topic.resolved', id); renderAll();
+    showToast(`「${t.title}」排期已确认`, 'success');
+  }
+
+  function isPending(t) { return t.projectStatus === 'pending'; }
   function addPrepFromInput(id) {
     const input = document.getElementById('prep-input-' + id);
     const t = appState.topics.find(t => t.id === id);

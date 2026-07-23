@@ -1448,7 +1448,7 @@
     return `<div onclick="selectTopic('${t.id}')" class="topic-item ${act?'active':''} rounded-lg px-3 py-2.5 mb-1 cursor-pointer relative ${isDone?'opacity-60':''}">
       <div class="flex items-center justify-between"><span class="text-sm font-medium truncate flex-1 ${act?'':'text-coffee'}">${escapeHtml(t.title)}</span>${isDone?'<span class="completed-badge">已完成</span>':''}${conflict.hasConflict?'<svg class="w-4 h-4 text-red-500 flex-shrink-0 ml-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>':''}</div>
       ${plats ? `<div class="text-xs ${act?'text-white/50':'text-coffee-light/60'} truncate" style="font-size:10px;margin-top:1px">${plats}</div>` : ''}
-      <div class="flex items-center justify-between mt-1.5"><span class="text-xs ${act?'text-white/70':'text-coffee-light'}">${t.category||'内容'} · ${t.publishDate||''}</span><span class="text-xs ${act?'text-white/70':'text-coffee-light'}">${progress}%</span></div>
+      <div class="flex items-center justify-between mt-1.5"><span class="text-xs ${act?'text-white/70':'text-coffee-light'}">${t.category||'内容'} · ${t.publishDate ? t.publishDate : '<span class="text-orange-500">日期未定</span>'}</span><span class="text-xs ${act?'text-white/70':'text-coffee-light'}">${progress}%</span></div>
       <div class="w-full h-1 ${act?'bg-white/30':'bg-beige-200'} rounded-full mt-1.5"><div class="h-1 rounded-full progress-bar ${act?'bg-white':'bg-brand'}" style="width:${progress}%"></div></div>
     </div>`;
   }
@@ -1553,7 +1553,7 @@
       <div class="text-right ml-4 flex-shrink-0">
         <div class="text-xs text-coffee-light mb-0.5">发布日期</div>
         <div class="big-date text-coffee">${pubDate ? shortDate(pubDate) : '—'}</div>
-        ${daysLeft !== null ? (daysLeft > 0 ? `<div class="text-xs text-coffee-light mt-0.5">${daysLeft} 天后</div>` : (daysLeft === 0 ? '<div class="text-xs text-brand font-medium mt-0.5">今天发布</div>' : `<div class="text-xs text-danger-text font-medium mt-0.5">已超 ${Math.abs(daysLeft)} 天</div>`)) : ''}
+        ${pubDate ? (daysLeft !== null ? (daysLeft > 0 ? `<div class="text-xs text-coffee-light mt-0.5">${daysLeft} 天后</div>` : (daysLeft === 0 ? '<div class="text-xs text-brand font-medium mt-0.5">今天发布</div>' : `<div class="text-xs text-danger-text font-medium mt-0.5">已超 ${Math.abs(daysLeft)} 天</div>`)) : '') : '<div class="text-xs text-orange-500 font-medium mt-0.5">日期未定</div>'}
       </div>
     </div>`;
 
@@ -1664,6 +1664,7 @@
         <div class="flex items-center gap-2">
           <label class="text-xs text-coffee-light">发布日期</label>
           <input type="date" value="${pubDate}" onchange="updatePublishDate('${topic.id}',this.value)" class="text-sm border border-beige-200 rounded-lg px-3 py-1.5 bg-beige-50 text-coffee">
+          <button onclick="setPublishDateTBD('${topic.id}')" class="text-xs ${pubDate?'text-coffee-light border border-beige-300':'text-orange-500 border border-orange-300 bg-orange-50'} rounded-lg px-2 py-1.5 hover:bg-orange-50 transition-colors">未定</button>
         </div>
         <button onclick="openTmlModal('${topic.id}')" class="text-xs text-brand border border-brand/40 rounded-lg px-3 py-1.5 hover:bg-brand hover:text-white transition-colors">粘贴 TML</button>
         ${topic.completed
@@ -1821,6 +1822,12 @@
     }
     markUpdated(t); saveData(); renderAll();
   }
+  function setPublishDateTBD(id) {
+    const t = appState.topics.find(t => t.id === id); if (!t) return;
+    t.publishDate = '';
+    markUpdated(t); saveData(); renderAll();
+    showToast('发布日期已设为未定', 'info');
+  }
   function addPrepFromInput(id) {
     const input = document.getElementById('prep-input-' + id);
     const t = appState.topics.find(t => t.id === id);
@@ -1843,7 +1850,7 @@
   }
   function canCheckStep(steps, idx) {
     for (let i = 0; i < idx; i++) {
-      if (!steps[i].done) return steps[i].name;
+      if (!steps[i].done && !steps[i].cleared) return steps[i].name;
     }
     return null;
   }

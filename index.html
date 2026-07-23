@@ -874,8 +874,9 @@
   }
 
   async function deleteTopic(id) {
-    if (!confirm('确定删除？')) return;
     const t = appState.topics.find(t => t.id === id);
+    if (!t) return;
+    if (!confirm(`确定删除「${t.title}」？\n\n此操作不可恢复，所有工序、备注、通告信息将被永久删除。`)) return;
     logAction('topic.delete', id, { title: t?.title });
     try {
       const res = await fetch(`/api/topic/${id}`, { method: 'DELETE' });
@@ -1630,6 +1631,11 @@
       html += `<div class="bg-danger-bg text-danger-text border border-danger-border rounded-lg px-4 py-3 text-sm">存在延期任务</div>`;
     }
 
+    // 删除选题（展示态底部）
+    html += `<div class="border-t border-beige-200 pt-3 mt-2">
+      <button onclick="deleteTopic('${topic.id}')" class="text-xs text-red-400 border border-dashed border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors">删除选题</button>
+    </div>`;
+
     // ══════════════════════════════════════
     //  编辑态（点击编辑后展开）
     // ══════════════════════════════════════
@@ -1745,6 +1751,10 @@
         </div>`;
       }
 
+      html += `<div class="border-t border-beige-200 pt-3 mt-2">
+        <button onclick="deleteTopic('${topic.id}')" class="text-xs text-red-400 border border-dashed border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors">删除选题</button>
+      </div>`;
+
       html += `</div>`; // 编辑态结束
     }
 
@@ -1824,7 +1834,13 @@
   }
   function togglePrep(id, idx) { const t = appState.topics.find(t => t.id === id); if (t && t.preparationTasks[idx]) { t.preparationTasks[idx].done = !t.preparationTasks[idx].done; markUpdated(t); saveData(); renderEditPage(); } }
   function updatePrepText(id, idx, value) { const t = appState.topics.find(t => t.id === id); if (t && t.preparationTasks[idx]) { t.preparationTasks[idx].text = value; markUpdated(t); saveData(); } }
-  function deletePrep(id, idx) { const t = appState.topics.find(t => t.id === id); if (t) { t.preparationTasks.splice(idx, 1); markUpdated(t); saveData(); renderEditPage(); } }
+  function deletePrep(id, idx) {
+    const t = appState.topics.find(t => t.id === id);
+    if (!t || !t.preparationTasks[idx]) return;
+    if (!confirm(`删除「${t.preparationTasks[idx].text || '此项'}」？`)) return;
+    t.preparationTasks.splice(idx, 1);
+    markUpdated(t); saveData(); renderEditPage();
+  }
   function canCheckStep(steps, idx) {
     for (let i = 0; i < idx; i++) {
       if (!steps[i].done) return steps[i].name;

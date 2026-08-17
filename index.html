@@ -641,24 +641,6 @@
     showToast(`「${escapeHtml(t.title)}」已撤回完成`, 'info');
   }
 
-  // 自动勾选过期工序
-  function autoCheckOverdueSteps() {
-    const today = todayStr();
-    let checked = 0;
-    appState.topics.filter(t => !t.completed).forEach(t => {
-      let topicDirty = false;
-      (t.productionSteps || []).forEach(s => {
-        if (!s.done && !s.cleared && s.endDate && s.endDate < today) {
-          s.done = true;
-          checked++;
-          topicDirty = true;
-        }
-      });
-      if (topicDirty) markDirty(t.id);
-    });
-    if (checked > 0) { saveData(); showToast(`${checked} 个过期工序已自动勾选`, 'info', 3000); }
-  }
-
   // 延期工序
   function delayStep(id, idx, days) {
     const t = appState.topics.find(t => t.id === id);
@@ -731,7 +713,6 @@
       });
       sortStepsByDefaultOrder(t.productionSteps);
     });
-    autoCheckOverdueSteps();
     renderAll();
     loadSystemInfo();
     initMobile();
@@ -749,7 +730,6 @@
 
   function saveData(dirtyTopicId) {
     if (dirtyTopicId) markDirty(dirtyTopicId);
-    markSettingsDirty();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(flushSave, 300);
   }
@@ -762,10 +742,14 @@
     saveAbort = new AbortController();
     const signal = saveAbort.signal;
 
-    // 保存设置
+    // 保存设置（失败时保留脏标记，稍后自动重试）
     if (_settingsDirty) {
       _settingsDirty = false;
-      try { await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(appState.settings), signal }); } catch {}
+      try {
+        await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(appState.settings), signal });
+      } catch (e) {
+        _settingsDirty = true;
+      }
     }
 
     // 只保存脏选题
@@ -786,11 +770,23 @@
             body: JSON.stringify(topic), signal
           });
           if (retry.ok) { const rd = await retry.json(); topic._version = rd._version; }
+          else _dirtyTopics.add(topic.id);
         } else if (res.ok) {
           const data = await res.json();
           topic._version = data._version;
+        } else {
+          _dirtyTopics.add(topic.id);
         }
-      } catch (e) { if (e.name !== 'AbortError') {} }
+      } catch (e) {
+        // 网络错误 / 中断：重新标记脏，确保改动不丢失
+        _dirtyTopics.add(topic.id);
+      }
+    }
+
+    // 若仍有未保存的改动（失败 / 中断 / 冲突），自动安排重试
+    if (_settingsDirty || _dirtyTopics.size > 0) {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(flushSave, 3000);
     }
   }
 
@@ -860,7 +856,7 @@
   function importData(event) {
     const file = event.target.files[0]; if (!file) return;
     const reader = new FileReader();
-    reader.onload = e => { try { const d = JSON.parse(e.target.result); if (d.topics) { appState = d; if (!appState.settings) appState.settings = {}; if (!appState.settings.stepDefs) appState.settings.stepDefs = JSON.parse(JSON.stringify(DEFAULT_STEP_DEFS)); saveData(); renderAll(); alert('导入成功！'); } } catch (err) { alert('导入失败'); } };
+    reader.onload = e => { try { const d = JSON.parse(e.target.result); if (d.topics) { appState = d; if (!appState.settings) appState.settings = {}; if (!appState.settings.stepDefs) appState.settings.stepDefs = JSON.parse(JSON.stringify(DEFAULT_STEP_DEFS)); markDirty('*'); markSettingsDirty(); saveData(); renderAll(); alert('导入成功！'); } } catch (err) { alert('导入失败'); } };
     reader.readAsText(file); event.target.value = '';
   }
 
@@ -871,10 +867,15 @@
       publishDate: '', preparationTasks: [], productionSteps: [],
       projectStatus: 'normal', createdAt: nowISO(), updatedAt: nowISO()
     };
-    topic.productionSteps = reverseSchedule(topic.publishDate || addDays(todayStr(), 14));
+    // 所有工序默认「未安排」，等用户手动设置发布日期后只联动发布节点
+    topic.productionSteps = getStepDefs().map(def => ({
+      key: def.key, name: def.name, startDate: '', endDate: '',
+      duration: def.duration, color: def.color, done: false, cleared: true
+    }));
     appState.topics.push(topic);
     selectedTopicId = topic.id;
     editMode = true;
+    markDirty(topic.id);
     saveData();
     logAction('topic.create', topic.id, { title: topic.title });
     switchView('edit');
@@ -935,9 +936,16 @@
         projectCalYear = d.getFullYear();
         projectCalMonth = d.getMonth();
       } else if (topic?.productionSteps?.length) {
-        const d = new Date(topic.productionSteps[0].startDate + 'T00:00:00');
-        projectCalYear = d.getFullYear();
-        projectCalMonth = d.getMonth();
+        const firstStep = topic.productionSteps.find(s => s.startDate && !s.cleared);
+        if (firstStep) {
+          const d = new Date(firstStep.startDate + 'T00:00:00');
+          projectCalYear = d.getFullYear();
+          projectCalMonth = d.getMonth();
+        } else {
+          const now = new Date();
+          projectCalYear = now.getFullYear();
+          projectCalMonth = now.getMonth();
+        }
       } else {
         const now = new Date();
         projectCalYear = now.getFullYear();
@@ -1853,19 +1861,32 @@
   function updatePublishDate(id, value) {
     const t = appState.topics.find(t => t.id === id); if (!t) return;
     t.publishDate = value;
+    // 只同步「发布」节点，其余工序日期不动
     if ((t.productionSteps || []).length) {
-      if (confirm('是否重新倒排工序？\n\n一般在初始化时使用，已有排期请谨慎操作。\n取消则仅更新发布日期，不动工序。')) {
-        const doneMap = {}; t.productionSteps.forEach(s => { doneMap[s.key] = s.done; });
-        t.productionSteps = reverseSchedule(value);
+      const pub = t.productionSteps.find(s => s.key === 'publish');
+      if (pub) {
+        pub.startDate = value || '';
+        pub.endDate = value || '';
+        pub.duration = value ? 1 : 0;
+        pub.cleared = !value; // 空日期回退到「未安排」
       }
-    } else {
-      t.productionSteps = reverseSchedule(value);
+    } else if (value) {
+      // 无工序且有日期时，初始化全部节点为未安排，仅设发布节点
+      t.productionSteps = getStepDefs().map(def => ({
+        key: def.key, name: def.name, startDate: '', endDate: '',
+        duration: def.duration, color: def.color, done: false, cleared: true
+      }));
+      const pub = t.productionSteps.find(s => s.key === 'publish');
+      if (pub) { pub.startDate = value; pub.endDate = value; pub.duration = 1; pub.cleared = false; }
     }
     markUpdated(t); saveData(); renderAll();
   }
   function setPublishDateTBD(id) {
     const t = appState.topics.find(t => t.id === id); if (!t) return;
     t.publishDate = '';
+    // 同步把发布节点设为「未安排」
+    const pub = (t.productionSteps || []).find(s => s.key === 'publish');
+    if (pub) { pub.startDate = ''; pub.endDate = ''; pub.duration = 0; pub.cleared = true; }
     markUpdated(t); saveData(); renderAll();
     showToast('发布日期已设为未定', 'info');
   }
@@ -2154,7 +2175,7 @@
       }
     } catch (e) { showToast('生成失败', 'error'); }
   }
-  function saveSettings() { appState.settings.stepDefs = settingsDraft; saveData(); closeSettings(); logAction('settings.save', null, { steps: settingsDraft.map(s => s.name) }); renderAll(); }
+  function saveSettings() { appState.settings.stepDefs = settingsDraft; markSettingsDirty(); saveData(); closeSettings(); logAction('settings.save', null, { steps: settingsDraft.map(s => s.name) }); renderAll(); }
   function settingsRescheduleAll() {
     if (!confirm('确定要用当前工序设置重新倒排所有选题？')) return;
     appState.topics.forEach(t => {
@@ -2164,7 +2185,7 @@
       t.productionSteps.forEach(s => { if (doneMap[s.key]) s.done = true; });
       markUpdated(t);
     });
-    appState.settings.stepDefs = settingsDraft; saveData(); closeSettings(); renderAll();
+    appState.settings.stepDefs = settingsDraft; markSettingsDirty(); saveData(); closeSettings(); renderAll();
   }
 
   // ── Canbox 导入 ──
@@ -2195,6 +2216,7 @@
     appState.settings.canbox.url = url;
     appState.settings.canbox.password = password;
     appState.settings.canbox.allowSelfSigned = document.getElementById('canbox-self-signed').checked;
+    markSettingsDirty();
     saveData();
 
     const status = document.getElementById('canbox-status');
@@ -2224,8 +2246,9 @@
             // 合并各职位人员（去重）
             ['director','photographer','production','rd','operational','audio','business'].forEach(role => {
               if (item[role]) {
-                const existing = projectMap[key][role];
-                const newNames = item[role].split(/[,，、\s]+/).filter(n => n && !existing.includes(n));
+                const existing = projectMap[key][role] || '';
+                const existingNames = existing ? existing.split(/[,，、\s]+/) : [];
+                const newNames = item[role].split(/[,，、\s]+/).filter(n => n && !existingNames.includes(n));
                 if (newNames.length) projectMap[key][role] = existing ? existing + ', ' + newNames.join(', ') : newNames.join(', ');
               }
             });
@@ -2894,48 +2917,70 @@
     { keys: ['发布', 'publish', '发片', '上线'], stepKey: 'publish' },
   ];
   // TML 备注识别关键词（匹配到这些词的内容自动归为备注，不作为工序）
-  const TML_NOTE_KEYWORDS = ['粗剪', '探店清单', '文案', '选题', '大纲', '封面', '调色', '字幕', 'vo', '配音', '混音', '素材', '转场', '特效', '审片', '修改', '反馈', '确认', '沟通', '对脚本', '堪景', '置景', '道具', '造型', '妆发', '收音', '配音']
+  const TML_NOTE_KEYWORDS = ['探店清单', '文案', '选题', '大纲', '封面', '调色', '字幕', 'vo', '配音', '混音', '素材', '转场', '特效', '审片', '修改', '反馈', '确认', '沟通', '对脚本', '堪景', '置景', '道具', '造型', '妆发', '收音']
 
   function parseTmlDate(dateStr, currentYear) {
-    // 处理各种日期格式: 7.15, 7/15, 7月15日, 7-15
+    // 处理各种日期格式: 7.15, 7/15, 7月15日
     const cleaned = dateStr.replace(/月/g, '.').replace(/日/g, '').replace(/\//g, '.').trim();
     const parts = cleaned.split('.');
     if (parts.length < 2) return null;
     const month = parseInt(parts[0]);
     const day = parseInt(parts[1]);
-    if (isNaN(month) || isNaN(day) || month < 1 || month > 31 || day < 1 || day > 31) return null;
+    if (isNaN(month) || isNaN(day) || month < 1 || month > 12 || day < 1 || day > 31) return null;
     const year = (month < new Date().getMonth() + 1) ? currentYear + 1 : currentYear;
+    // 校验日期真实存在（拒绝如 2月30日 之类的非法日期）
+    const dt = new Date(year, month - 1, day);
+    if (dt.getFullYear() !== year || dt.getMonth() !== month - 1 || dt.getDate() !== day) return null;
     return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   }
 
   function parseTmlRange(rangeStr, currentYear) {
-    // 处理日期范围: 7.23-30, 7.14–17, 7.28-8.3
-    const sep = rangeStr.includes('–') ? '–' : '-';
+    // 处理日期范围: 7.23-30, 7.14–17, 7.28-8.3, 12.28-1.3, 7.28~8.3
+    const sep = ['–', '~', '-'].find(s => rangeStr.includes(s));
+    if (!sep) return null;
     const parts = rangeStr.split(sep);
     if (parts.length !== 2) return null;
 
     const startPart = parts[0].trim();
     const endPart = parts[1].trim();
 
-    // 起始日期
+    // 起始日期（年份用启发式推断）
     const startDate = parseTmlDate(startPart, currentYear);
     if (!startDate) return null;
+    const startYear = parseInt(startDate.slice(0, 4));
+    const startMonth = parseInt(startDate.slice(5, 7));
+    const startDay = parseInt(startDate.slice(8, 10));
 
     // 结束日期：可能是简写（只有日）或完整（月.日）
-    let endDate;
-    if (endPart.includes('.') || endPart.includes('/')) {
-      endDate = parseTmlDate(endPart, currentYear);
+    let endMonth, endDay;
+    if (endPart.includes('.') || endPart.includes('/') || endPart.includes('月')) {
+      const cleaned = endPart.replace(/月/g, '.').replace(/日/g, '').replace(/\//g, '.').trim();
+      const ep = cleaned.split('.');
+      if (ep.length < 2) return null;
+      endMonth = parseInt(ep[0]);
+      endDay = parseInt(ep[1]);
     } else {
       // 简写：继承起始月份
-      const startParts = startPart.replace(/\//g, '.').split('.');
-      const endDay = parseInt(endPart);
-      if (isNaN(endDay)) return null;
-      const month = parseInt(startParts[0]);
-      const year = (month < new Date().getMonth() + 1) ? currentYear + 1 : currentYear;
-      endDate = `${year}-${String(month).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`;
+      endMonth = startMonth;
+      endDay = parseInt(endPart);
     }
+    if (isNaN(endMonth) || isNaN(endDay) || endMonth < 1 || endMonth > 12 || endDay < 1 || endDay > 31) return null;
 
-    if (!endDate || endDate < startDate) return null;
+    // 结束日期相对起始日期推断年份，正确处理跨年/跨月
+    let endYear = startYear;
+    if (endMonth < startMonth) {
+      // 结束月份早于起始月份 → 跨年（如 12.28-1.3）
+      endYear = startYear + 1;
+    } else if (endMonth === startMonth && endDay < startDay) {
+      // 同月但日更早 → 跨到下一月（起始月为 12 月时跨年）
+      endMonth = startMonth + 1;
+      if (endMonth > 12) { endMonth = 1; endYear = startYear + 1; }
+    }
+    const dt = new Date(endYear, endMonth - 1, endDay);
+    if (dt.getFullYear() !== endYear || dt.getMonth() !== endMonth - 1 || dt.getDate() !== endDay) return null;
+
+    const endDate = `${endYear}-${String(endMonth).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`;
+    if (endDate < startDate) return null;
     return { start: startDate, end: endDate };
   }
 
@@ -2979,7 +3024,7 @@
       const isNoteKeyword = TML_NOTE_KEYWORDS.some(k => nameLower.includes(k));
 
       // 解析日期
-      const isRange = datePart.includes('-') || datePart.includes('–');
+      const isRange = datePart.includes('-') || datePart.includes('–') || datePart.includes('~');
       let startDate, endDate;
 
       if (isRange) {

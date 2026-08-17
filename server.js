@@ -16,7 +16,7 @@ const STARTUP_TIME = new Date().toISOString();
 const BUILD_VERSION = process.env.APP_VERSION || (() => { try { return JSON.parse(fsSync.readFileSync(path.join(__dirname, 'package.json'), 'utf-8')).version; } catch { return 'dev'; } })();
 
 app.use(express.json({ limit: '10mb' }));
-app.use('/index.html', express.static(path.join(__dirname, 'index.html')));
+app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/canbox', (req, res) => res.sendFile(path.join(__dirname, 'canbox.html')));
@@ -117,8 +117,14 @@ app.get('/api/data', async (req, res) => {
   }
 });
 
+// ── 校验选题 ID（防止路径遍历）──
+function isValidTopicId(id) {
+  return typeof id === 'string' && /^[A-Za-z0-9_-]+$/.test(id);
+}
+
 // ── POST /api/topic/:id — 保存单个选题（带版本校验）──
 app.post('/api/topic/:id', async (req, res) => {
+  if (!isValidTopicId(req.params.id)) return res.status(400).json({ success: false, error: 'invalid topic id' });
   try {
     const topic = req.body;
     const topicFile = path.join(TOPICS_DIR, `${req.params.id}.json`);
@@ -153,6 +159,7 @@ app.post('/api/topic/:id', async (req, res) => {
 
 // ── DELETE /api/topic/:id — 删除选题 ──
 app.delete('/api/topic/:id', async (req, res) => {
+  if (!isValidTopicId(req.params.id)) return res.status(400).json({ success: false, error: 'invalid topic id' });
   try {
     const topicFile = path.join(TOPICS_DIR, `${req.params.id}.json`);
     if (fsSync.existsSync(topicFile)) await fs.unlink(topicFile);
@@ -219,7 +226,11 @@ app.get('/api/export', async (req, res) => {
 // ── 操作日志 ──
 if (!fsSync.existsSync(LOG_DIR)) fsSync.mkdirSync(LOG_DIR, { recursive: true });
 
-function getLogFilePath(date) { return path.join(LOG_DIR, `activity_log_${date}.json`); }
+function getLogFilePath(date) {
+  // 校验日期格式，防止路径遍历
+  const safe = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : new Date().toISOString().slice(0, 10);
+  return path.join(LOG_DIR, `activity_log_${safe}.json`);
+}
 
 app.post('/api/log', async (req, res) => {
   try {
@@ -252,7 +263,8 @@ app.post('/api/log', async (req, res) => {
 
 app.get('/api/logs', async (req, res) => {
   try {
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const rawDate = req.query.date || new Date().toISOString().slice(0, 10);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : new Date().toISOString().slice(0, 10);
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const pageSize = 50;
     let logs = [];
@@ -352,6 +364,7 @@ app.get('/api/public/topics', checkApiKey, async (req, res) => {
 
 // GET /api/public/topics/:id — 单个选题详情
 app.get('/api/public/topics/:id', checkApiKey, async (req, res) => {
+  if (!isValidTopicId(req.params.id)) return res.status(400).json({ error: 'invalid topic id' });
   try {
     const topicFile = path.join(TOPICS_DIR, `${req.params.id}.json`);
     if (!fsSync.existsSync(topicFile)) return res.status(404).json({ error: '选题不存在' });

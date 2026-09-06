@@ -152,8 +152,7 @@
       </button>
     </div>
     <div class="p-3">
-      <select id="new-project-template" aria-label="新项目模板" class="w-full mb-2 text-xs border border-beige-200 rounded-lg px-2 py-2"><option value="">标准工序</option></select>
-      <button onclick="createTopic(document.getElementById('new-project-template').value)" class="w-full py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors flex items-center justify-center gap-1.5">
+      <button onclick="createTopic()" class="w-full py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors flex items-center justify-center gap-1.5">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
         新建选题
       </button>
@@ -240,11 +239,7 @@
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
           返回日历
         </button>
-        <div id="edit-card-content" class="max-w-3xl mx-auto"></div>
-        <div class="max-w-3xl mx-auto mt-6">
-          <h3 class="text-sm font-semibold mb-2">项目时间轴</h3>
-          <div id="edit-gantt-wrapper" class="gantt-scroll bg-white rounded-xl shadow-sm border border-beige-200 mb-4"><div id="edit-gantt-container"></div></div>
-        </div>
+        <div id="edit-card-content" class="mx-auto" style="max-width:1100px"></div>
         <!-- 项目通告单日历 -->
         <div id="project-calendar-section" class="max-w-3xl mx-auto mt-6">
           <div class="flex items-center justify-between mb-3">
@@ -455,6 +450,7 @@
   <script src="/schedule.js"></script>
   <script src="/workflow.js"></script>
   <script src="/workbench.js"></script>
+  <script src="/editor.js"></script>
   <script>
   const CATEGORIES = ['内容', '广告'];
   const PLATFORMS = ['哔哩哔哩', '抖音', '小红书', '视频号', '微信', '微博'];
@@ -481,7 +477,7 @@
   function fmtDate(d) { const date = d instanceof Date ? d : new Date(d + 'T00:00:00'); return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0'); }
   function addDays(dateStr, n) { const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() + n); return fmtDate(d); }
   function daysBetween(a, b) { return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000); }
-  function todayStr() { return fmtDate(new Date()); }
+  function todayStr() { return PocketWorkflow.day(); }
   function escapeHtml(str) { const div = document.createElement('div'); div.textContent = str || ''; return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
   function shortDate(dateStr) { if (!dateStr) return '—'; const p = dateStr.split('-'); return parseInt(p[1]) + '/' + parseInt(p[2]); }
   function nowISO() { return new Date().toISOString(); }
@@ -590,10 +586,11 @@
     return steps;
   }
 
-  function checkConflict(steps) {
-    const today = todayStr();
+  function checkConflict(steps, topic = {}) {
+    if(topic.completed)return {hasConflict:false};
+    const today = PocketWorkflow.day(topic);
     for (const step of steps) {
-      if (!step.done && !step.cleared && step.endDate && step.endDate < today) {
+      if (PocketWorkflow.stepState(topic,step,today) === 'overdue') {
         return { hasConflict: true, message: `存在延期任务：「${step.name}」已过期 (${step.endDate})`, stepKey: step.key };
       }
     }
@@ -607,14 +604,10 @@
   }
 
   function getActiveSteps(topic) {
-    return (topic.productionSteps || []).filter(s => !s.cleared);
+    return (topic.productionSteps || []).filter(s => !s.cleared && !s.skipped);
   }
 
-  function isProjectComplete(topic) {
-    if (topic.completed) return true;
-    const active = getActiveSteps(topic);
-    return active.length > 0 && active.every(s => s.done);
-  }
+  function isProjectComplete(topic) { return !!topic.completed; }
 
 
 
@@ -694,7 +687,9 @@
     if (!topic || !previous) return;
     previous.productionSteps.forEach(step => {
       const current = topic.productionSteps.find(s => s.key === step.key);
-      if (current) { step.done = current.done; step.name = current.name; step.color = current.color; }
+      if (current) { step.done = current.done; step.name = current.name; step.color = current.color;
+        if(current.exception)step.exception=structuredClone(current.exception);else delete step.exception;
+      }
     });
     Object.assign(topic, previous); topic.scheduleConfirmed = false; markUpdated(topic); saveData();
     logAction('step.update', id, { action: 'undo' }); renderAll();
@@ -736,7 +731,7 @@
         });
         topic.productionSteps.forEach((step, i) => {
           const label = document.getElementById('step-duration-' + i);
-          if (label) label.textContent = getStepRanges(step).length ? calculateStepDuration(step) + '天' : '未安排';
+          if (label) label.textContent = getStepRanges(step).length ? calculateStepDuration(step) + '天' : '';
           const row = document.getElementById('step-row-' + i);
           if (row) {
             row.querySelectorAll('[data-needs-date]').forEach(button => { button.disabled = !getStepRanges(step).length; });
@@ -756,7 +751,7 @@
   async function loadData() {
     try {
       const res = await fetch('/api/data');
-      if (res.ok) { appState = await res.json(); localStorage.setItem('pocket_os_backup', JSON.stringify(appState)); }
+      if (res.ok) { appState = await res.json(); PocketWorkflow.setClock(appState.serverTime); localStorage.setItem('pocket_os_backup', JSON.stringify(appState)); }
       else throw new Error('API error');
     } catch (e) {
       const cached = localStorage.getItem('pocket_os_backup');
@@ -1019,9 +1014,11 @@
   }
 
   // ── CRUD ──
-  function createTopic(templateId = '') {
+  function createTopic(templateId = '', title = '', progressionMode = 'calendar') {
+    if (!title.trim()) { openNewProject(templateId); return; }
     const topic = {
-      id: genId(), title: '新选题', category: '内容', projectType: '自有项目', platforms: [],
+      id: genId(), title: title.trim(), category: '内容', projectType: '自有项目', platforms: [],
+      progressionMode, timeZone:PocketWorkflow.DEFAULT_ZONE,
       publishDate: '', preparationTasks: [], productionSteps: [],
       projectStatus: 'normal', createdAt: nowISO(), updatedAt: nowISO()
     };
@@ -1029,7 +1026,7 @@
     const blueprint = PocketWorkflow.blueprint(templateId, getStepDefs(), appState.settings.projectTemplates || []);
     topic.productionSteps = blueprint.productionSteps;
     topic.preparationTasks = blueprint.tasks.map((text,i) => ({id:'prep_'+Date.now()+'_'+i,text,done:false}));
-    topic.lifecycle = 'preparation';
+    if(progressionMode === 'manual')topic.lifecycle = 'preparation';
     appState.topics.push(topic);
     selectedTopicId = topic.id;
     markDirty(topic.id);
@@ -1070,6 +1067,7 @@
   }
 
   function exitEdit() {
+    if(workbenchReturn.ganttStart){ganttStartDate=new Date(workbenchReturn.ganttStart);ganttTotalDays=workbenchReturn.ganttDays;}
     switchView(workbenchReturn.view, true);
     requestAnimationFrame(() => {
       const main = document.getElementById('workspace-main'); if (main) main.scrollTop = workbenchReturn.top;
@@ -1083,6 +1081,7 @@
     const enteringEditor = view === 'edit' && (currentView !== 'edit' || renderedTopicId !== selectedTopicId);
     if (view === 'edit' && currentView !== 'edit') {
       workbenchReturn = { view: currentView, top: document.getElementById('workspace-main')?.scrollTop || 0,
+        ganttStart:ganttStartDate?.toISOString(),ganttDays:ganttTotalDays,
         windowTop: window.scrollY || 0, left: document.getElementById('gantt-scroll-wrapper')?.scrollLeft || 0 };
     }
     currentView = view;
@@ -1131,7 +1130,7 @@
   const COL_W = 160;
 
   function initGanttRange() {
-    const today = new Date();
+    const today = new Date(todayStr()+'T12:00:00');
     ganttStartDate = new Date(today);
     ganttStartDate.setDate(today.getDate() - 30);
     ganttTotalDays = GANTT_INITIAL_DAYS;
@@ -1171,9 +1170,9 @@
   }
 
   // ── 甘特图渲染（合并相邻同工序）──
-  function buildMergedBlocks(steps, dates) {
+  function buildMergedBlocks(steps, dates, topic = null) {
     const blocks = [];
-    const todayFmt = todayStr();
+    const todayFmt = topic ? PocketWorkflow.day(topic) : todayStr();
     const soonFmt = addDays(todayFmt, 2);
     steps.forEach(step => {
       getStepRanges(step).forEach((range, rangeIndex) => {
@@ -1184,9 +1183,10 @@
           if (inRange && mergeStart === null) mergeStart = i;
           if ((!inRange || i === dates.length - 1) && mergeStart !== null) {
             const endIdx = inRange ? i : i - 1;
-            const delayed = !step.done && range.end === getStepRanges(step).at(-1)?.end && range.end < todayFmt;
-            const upcoming = !step.done && range.end >= todayFmt && range.end <= soonFmt;
-            blocks.push({ step, range, rangeIndex, startIdx: mergeStart, endIdx, conflict: delayed, upcoming, lane: 0 });
+            const state = PocketWorkflow.stepState(topic||{},step,todayFmt);
+            const delayed = state==='overdue' && range.end === getStepRanges(step).at(-1)?.end;
+            const upcoming = ['active','upcoming','between'].includes(state) && range.end >= todayFmt && range.end <= soonFmt;
+            blocks.push({ step, range, rangeIndex, startIdx: mergeStart, endIdx, conflict: delayed, upcoming, lane: 0, settled:PocketWorkflow.settled(topic||{},step,todayFmt), original:PocketWorkflow.exceptionKinds.includes(state), statusLabel:PocketWorkflow.stateLabels[state] });
             mergeStart = null;
           }
         }
@@ -1208,7 +1208,7 @@
 
   function renderGanttTable(containerId, dates, topics, topicClickable, showDateClick) {
     const container = document.getElementById(containerId);
-    const todayFmt = todayStr();
+    const todayFmt = containerId==='edit-gantt-container' && topics[0] ? PocketWorkflow.day(topics[0]) : todayStr();
     const defs = getStepDefs();
 
     let html = '<table class="border-collapse" style="min-width:' + (COL_W + dates.length * CELL_W) + 'px">';
@@ -1228,8 +1228,8 @@
 
     topics.forEach(topic => {
       const progress = calcProgress(topic);
-      const conflict = checkConflict(getActiveSteps(topic));
-      const blocks = buildMergedBlocks(getActiveSteps(topic), dates);
+      const conflict = checkConflict(getActiveSteps(topic),topic);
+      const blocks = buildMergedBlocks(getActiveSteps(topic), dates,topic);
       const isPend = topic.projectStatus === 'pending';
 
       html += `<tr><td class="gantt-sticky bg-white p-2 border-b border-r border-beige-200 cursor-pointer hover:bg-beige-50 ${isPend?'border-l-2 border-l-orange-400':''}" style="min-width:${COL_W}px;width:${COL_W}px" onclick="selectTopic('${topic.id}')">
@@ -1262,9 +1262,9 @@
         const width = (b.endIdx - b.startIdx + 1) * CELL_W - 4;
         const top = b.lane * LANE_H + 2;
         const canResize = b.step.key !== 'publish' && !(b.step.key === 'shoot' && getStepRanges(b.step).length > 1);
-        html += `<div class="gantt-merged rounded px-1.5 flex items-center text-xs font-medium truncate ${b.conflict?'conflict-pulse':''}" style="left:${left}px;width:${width}px;top:${top}px;height:${LANE_H - 4}px;background:${b.step.color}${b.step.done?'88':''};${b.step.done?'text-decoration:line-through':''};${b.conflict?'border:2px dashed #E8A87C':''};${b.upcoming?'border:2px solid #F2D98B':''};cursor:grab" draggable="true" ondragstart="ganttDragStart(event,'${topic.id}','${b.step.key}',${b.rangeIndex},'${dates[b.startIdx]}')" ondragend="ganttDragEnd(event)" onclick="onGanttBlockClick(event,'${topic.id}','${b.step.key}')" title="${escapeHtml(b.step.name)} (${b.range.start} ~ ${b.range.end})${b.conflict?' - 延期':''}${b.upcoming?' - 即将到期':''}">
+        html += `<div class="gantt-merged rounded px-1.5 flex items-center text-xs font-medium truncate ${b.conflict?'conflict-pulse':''}" style="left:${left}px;width:${width}px;top:${top}px;height:${LANE_H - 4}px;background:${b.step.color}${b.settled?'88':''};${b.settled?'text-decoration:line-through':''};${b.conflict?'border:2px dashed #E8A87C':''};${b.upcoming?'border:2px solid #F2D98B':''};cursor:grab" draggable="true" ondragstart="ganttDragStart(event,'${topic.id}','${b.step.key}',${b.rangeIndex},'${dates[b.startIdx]}')" ondragend="ganttDragEnd(event)" onclick="onGanttBlockClick(event,'${topic.id}','${b.step.key}')" title="${escapeHtml(b.step.name)} (${b.range.start} ~ ${b.range.end})${b.conflict?' - 延期':''}${b.upcoming?' - 即将到期':''} · ${escapeHtml(b.statusLabel)}">
           ${canResize ? `<div class="resize-handle left" onmousedown="ganttResizeStart(event,'${topic.id}','${b.step.key}','left')"></div>` : ''}
-          <span class="flex-1 truncate pointer-events-none">${escapeHtml(b.step.name)}</span>
+          <span class="flex-1 truncate pointer-events-none">${escapeHtml(b.step.name)}${b.original?' · 原计划':''}</span>
           ${canResize ? `<div class="resize-handle right" onmousedown="ganttResizeStart(event,'${topic.id}','${b.step.key}','right')"></div>` : ''}
         </div>`;
       });
@@ -1442,7 +1442,7 @@
     if (!active.length) { el.innerHTML = '<p class="text-xs text-coffee-light col-span-full text-center py-8">没有符合筛选条件的项目</p>'; return; }
     el.innerHTML = active.map(topic => {
       const progress = calcProgress(topic);
-      const conflict = checkConflict(getActiveSteps(topic));
+      const conflict = checkConflict(getActiveSteps(topic),topic);
       const pubDate = topic.publishDate || '';
       const daysLeft = pubDate ? daysBetween(todayStr(), pubDate) : null;
       const allSteps = topic.productionSteps || [];
@@ -1466,22 +1466,22 @@
         <div class="flex items-start gap-2 flex-shrink-0 ml-3">
           <div class="text-right">
             <div class="text-xl font-bold text-coffee leading-none">${pubDate ? shortDate(pubDate) : '—'}</div>
-            ${pubDate ? (daysLeft !== null ? (daysLeft > 0 ? `<div class="text-xs text-coffee-light">${daysLeft}天</div>` : (daysLeft === 0 ? '<div class="text-xs text-brand font-medium">今天</div>' : `<div class="text-xs text-danger-text font-medium">超${Math.abs(daysLeft)}天</div>`)) : '') : '<div class="text-xs text-orange-500">未定</div>'}
+            ${pubDate ? (daysLeft !== null ? (daysLeft > 0 ? `<div class="text-xs text-coffee-light">${daysLeft}天</div>` : (daysLeft === 0 ? '<div class="text-xs text-brand font-medium">今天</div>' : `<div class="text-xs text-danger-text font-medium">${Math.abs(daysLeft)}天前</div>`)) : '') : '<div class="text-xs text-orange-500">未定</div>'}
           </div>
           <button onclick="event.stopPropagation();deleteTopic('${topic.id}')" class="p-1 text-coffee-light hover:text-red-500 rounded hover:bg-red-50 transition-colors" title="删除"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
         </div>
       </div>`;
 
       // ── 进度条 ──
-      html += `<div class="px-4 pb-2"><div class="flex items-center gap-2"><div class="flex-1 h-1 bg-beige-100 rounded-full overflow-hidden"><div class="h-1 rounded-full progress-bar" style="width:${progress}%;background:${progress===100?'#38A169':'#B37D56'}"></div></div><span class="text-xs text-coffee-light">${progress}%</span></div></div>`;
+      html += `<div class="px-4 pb-2"><div class="flex items-center gap-2"><div class="flex-1 h-1 bg-beige-100 rounded-full overflow-hidden"><div class="h-1 rounded-full progress-bar" style="width:${progress}%;background:${progress===100?'#38A169':'#B37D56'}"></div></div><span class="text-xs text-coffee-light">${progress}%</span><span class="workflow-help">${escapeHtml(PocketWorkflow.progressText(topic))}</span></div></div>`;
 
       // ── 工序横排 ──
       html += `<div class="px-4 pb-2 flex flex-wrap gap-x-3 gap-y-1">`;
       allSteps.forEach(step => {
         const isC = conflict.hasConflict && conflict.stepKey === step.key;
-        html += `<div class="flex items-center gap-1 ${isC?'text-danger-text':''}" onclick="event.stopPropagation();toggleStepByKey('${topic.id}','${step.key}')">
-          <div class="w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 cursor-pointer ${step.done?'border-green-500 bg-green-500':'border-beige-300'}">${step.done?'<svg class="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>':''}</div>
-          <span class="text-xs ${step.done?'line-through text-coffee-light':'text-coffee'}">${escapeHtml(step.name)}</span>
+        html += `<div class="flex items-center gap-1 ${isC?'text-danger-text':''}" onclick="event.stopPropagation();quickStepAction('${topic.id}','${step.key}')">
+          ${nodeCompletionIcon(topic,step)}
+          <span class="text-xs ${PocketWorkflow.settled(topic,step)?'line-through text-coffee-light':'text-coffee'}">${escapeHtml(step.name)}</span>${statusBadge(topic,step)}
           ${step.startDate ? `<span class="text-xs text-coffee-light">${shortDate(step.startDate)}</span>` : ''}
         </div>`;
       });
@@ -1558,7 +1558,7 @@
 
   function renderTopicItem(t) {
     const progress = calcProgress(t);
-    const conflict = checkConflict(getActiveSteps(t));
+    const conflict = checkConflict(getActiveSteps(t),t);
     const act = t.id === selectedTopicId;
     const plats = (t.platforms || []).join(' · ');
     const isDone = t.completed;
@@ -1578,7 +1578,7 @@
     if (!appState.topics.length) { grid.innerHTML = ''; return; }
     grid.innerHTML = activeTopics().map(topic => {
       const progress = calcProgress(topic);
-      const conflict = checkConflict(getActiveSteps(topic));
+      const conflict = checkConflict(getActiveSteps(topic),topic);
       const pubDate = topic.publishDate || '';
       const daysLeft = pubDate ? daysBetween(todayStr(), pubDate) : null;
       const steps = getActiveSteps(topic);
@@ -1594,18 +1594,18 @@
         <div class="flex items-start gap-2 flex-shrink-0 ml-2">
           <div class="text-right cursor-pointer" onclick="selectTopic('${topic.id}')">
             <div class="text-2xl font-bold text-coffee leading-none">${pubDate ? shortDate(pubDate) : '—'}</div>
-            ${daysLeft !== null ? (daysLeft > 0 ? `<div class="text-xs text-coffee-light mt-0.5">${daysLeft} 天后</div>` : (daysLeft === 0 ? '<div class="text-xs text-brand font-medium mt-0.5">今天</div>' : `<div class="text-xs text-danger-text font-medium mt-0.5">超 ${Math.abs(daysLeft)} 天</div>`)) : ''}
+            ${daysLeft !== null ? (daysLeft > 0 ? `<div class="text-xs text-coffee-light mt-0.5">${daysLeft} 天后</div>` : (daysLeft === 0 ? '<div class="text-xs text-brand font-medium mt-0.5">今天</div>' : `<div class="text-xs text-danger-text font-medium mt-0.5">${Math.abs(daysLeft)} 天前</div>`)) : ''}
           </div>
           <button onclick="event.stopPropagation();deleteTopic('${topic.id}')" class="p-1 text-coffee-light hover:text-red-500 rounded hover:bg-red-50 transition-colors" title="删除选题"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
         </div>
       </div>`;
-      html += `<div class="flex items-center gap-2"><div class="flex-1 h-1.5 bg-beige-100 rounded-full overflow-hidden"><div class="h-1.5 rounded-full progress-bar" style="width:${progress}%;background:${progress===100?'#38A169':'#B37D56'}"></div></div><span class="text-xs text-coffee-light">${progress}%</span></div>`;
+      html += `<div class="flex items-center gap-2"><div class="flex-1 h-1.5 bg-beige-100 rounded-full overflow-hidden"><div class="h-1.5 rounded-full progress-bar" style="width:${progress}%;background:${progress===100?'#38A169':'#B37D56'}"></div></div><span class="text-xs text-coffee-light">${progress}%</span><span class="workflow-help">${escapeHtml(PocketWorkflow.progressText(topic))}</span></div>`;
       html += `<div class="space-y-1">`;
       summarySteps.forEach(step => {
         const isC = conflict.hasConflict && conflict.stepKey === step.key;
         html += `<div class="flex items-center gap-2 py-1 px-1 rounded ${isC?'bg-danger-bg':''}">
-          <div class="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${step.done?'border-green-500 bg-green-500':'border-beige-300'}">${step.done?'<svg class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>':''}</div>
-          <span class="text-xs ${step.done?'line-through text-coffee-light':'text-coffee'} flex-1 truncate">${escapeHtml(step.name)}</span>
+          ${nodeCompletionIcon(topic,step)}
+          <span class="text-xs ${PocketWorkflow.settled(topic,step)?'line-through text-coffee-light':'text-coffee'} flex-1 truncate">${escapeHtml(step.name)}</span>${statusBadge(topic,step)}
           <span class="text-xs text-coffee-light">${shortDate(step.startDate)}</span>
         </div>`;
       });
@@ -1622,128 +1622,25 @@
   function renderEditPage() {
     const topic = appState.topics.find(t => t.id === selectedTopicId);
     if (!topic) { switchView('calendar'); return; }
-    const sameTopic = renderedTopicId === topic.id;
-    const drafts = {};
-    if (sameTopic) document.querySelectorAll('#edit-card-content [data-draft]').forEach(input => { drafts[input.id] = input.value; });
-    const focused = sameTopic && document.activeElement?.closest('#edit-card-content') ? document.activeElement.id : '';
-    const selection = focused ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
-    const el = document.getElementById('edit-card-content');
-    const steps = topic.productionSteps || [], tasks = topic.preparationTasks || [];
-    const cb = topic.canboxImport;
-    const progress = calcProgress(topic);
-    let html = `<article id="card-${topic.id}" class="topic-card bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-beige-200 space-y-5">
-      <div class="flex items-center justify-between gap-2 flex-wrap">
-        <span class="text-xs text-coffee-light">项目 · 直接编辑</span>
-        <button type="button" data-save-status onclick="flushSave()" class="text-xs text-sage-text rounded px-2 py-1" aria-live="polite">已保存</button>
-      </div>`;
-    const conflict = _topicConflicts.get(topic.id);
-    if (conflict) html += `<div class="rounded-lg border border-orange-300 bg-orange-50 p-3 text-sm text-orange-800">
-      <p>${conflict.serverTopic ? '其他设备修改了这个项目，请选择要保留的版本。' : '这个项目已在服务器删除，可保留当前版本重新保存。'}</p>
-      <div class="flex gap-2 mt-2 flex-wrap"><button onclick="resolveConflictUseServer('${topic.id}')" class="editor-button">采用服务器版本</button><button onclick="resolveConflictOverwrite('${topic.id}')" class="editor-button">保留当前版本</button></div></div>`;
-    if (isPending(topic)) html += `<div class="pending-banner rounded-lg p-3 text-sm flex items-center gap-2 flex-wrap"><span class="flex-1">排期调整中${topic.pendingReason ? ' · ' + escapeHtml(topic.pendingReason) : ''}</span><button onclick="confirmNewSchedule('${topic.id}')" class="editor-button">确认排期</button></div>`;
-    html += `<div class="space-y-3">
-      <label class="block"><span class="text-xs text-coffee-light">项目名称</span>
-        <input id="topic-title" aria-label="项目名称" value="${escapeHtml(topic.title)}" oninput="commitTitle('${topic.id}',this.value)" onblur="if(!this.value.trim())this.value='新选题'" class="w-full text-xl font-semibold border border-beige-200 rounded-lg px-3 py-2 mt-1"></label>
-      <div class="flex items-end gap-4 flex-wrap">
-        <label class="text-xs text-coffee-light">分类<select aria-label="项目分类" onchange="selectCategory('${topic.id}',this.value)" class="block mt-1 text-sm text-coffee border border-beige-200 rounded-lg px-3 py-2">${CATEGORIES.map(c => `<option ${topic.category === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
-        <label class="text-xs text-coffee-light">发布日期<input id="topic-publish" type="date" aria-label="发布日期" data-schedule-date data-field="publishDate" value="${topic.publishDate || ''}" onchange="updatePublishDate('${topic.id}',this.value)" class="block mt-1 text-sm text-coffee border border-beige-200 rounded-lg px-3 py-2"></label>
-        <button onclick="setPublishDateTBD('${topic.id}')" class="editor-button">日期未定</button>
-        <span class="text-xs text-coffee-light mb-2">每个节点独立安排，可并行进行</span>
-      </div>
-      <div class="flex gap-2 flex-wrap">${PLATFORMS.map(p => `<button onclick="togglePlatform('${topic.id}','${p}')" aria-pressed="${(topic.platforms || []).includes(p)}" class="text-xs border rounded-full px-3 py-1.5 ${(topic.platforms || []).includes(p) ? 'bg-brand border-brand text-white' : 'border-beige-200 text-coffee-light'}">${p}</button>`).join('')}</div>
-    </div>
-    ${workflowEditorHtml(topic)}
-    <section aria-label="制作流程" class="space-y-3">
-      <div class="flex items-center justify-between gap-2 flex-wrap">
-        <h3 class="text-sm font-semibold">制作流程 <span id="edit-progress" class="text-xs font-normal text-coffee-light">${progress}% 已完成</span></h3>
-        <button id="undo-schedule" onclick="undoSchedule('${topic.id}')" ${scheduleHistory.get(topic.id)?.length ? '' : 'disabled'} class="editor-button">撤销排期修改</button>
-      </div>
-      <p class="text-xs text-coffee-light">选择开始、结束日期；同日安排只需选择一天。拖动色块只移动该节点，拍摄分段可单独调整。</p>
-      <div class="space-y-2">`;
-    steps.forEach((step, idx) => {
-      const ranges = getStepRanges(step), multi = ranges.length > 1;
-      const duration = ranges.length ? calculateStepDuration(step) + '天' : '未安排';
-      html += `<div id="step-row-${idx}" data-step-idx="${idx}" class="wf-row border border-beige-200 rounded-xl p-3 space-y-2" ondragover="stepDragOver(event)" ondrop="stepDrop(event,'${topic.id}',${idx})" ondragend="stepDragEnd(event)">
-        <div class="flex items-center gap-2">
-          <span draggable="true" ondragstart="stepDragStart(event,'${topic.id}',${idx})" class="cursor-grab px-1 text-coffee-light" title="拖动调整显示顺序">⠿</span>
-          <input type="checkbox" aria-label="${escapeHtml(step.name)} 已完成" ${step.done ? 'checked' : ''} onchange="toggleStep('${topic.id}',${idx})" class="w-4 h-4 accent-[#38A169]">
-          <span class="w-2 h-2 rounded-full" style="background:${step.color}"></span>
-          <input aria-label="${escapeHtml(step.name)} 节点名称" value="${escapeHtml(step.name)}" onchange="updateStepName('${topic.id}',${idx},this.value)" class="text-sm font-medium flex-1 min-w-0 bg-transparent rounded px-1 py-1 ${step.done ? 'line-through text-coffee-light' : ''}">
-          <span id="step-duration-${idx}" class="text-xs text-coffee-light">${duration}</span>
-          <button aria-label="上移${escapeHtml(step.name)}顺序" onclick="moveStepOrder('${topic.id}',${idx},-1)" ${idx === 0 ? 'disabled' : ''} class="editor-button">↑</button>
-          <button aria-label="下移${escapeHtml(step.name)}顺序" onclick="moveStepOrder('${topic.id}',${idx},1)" ${idx === steps.length - 1 ? 'disabled' : ''} class="editor-button">↓</button>
-        </div>
-        <div class="space-y-2">`;
-      (ranges.length ? ranges : [{ start: '', end: '' }]).forEach((range, rangeIdx) => {
-        const base = escapeHtml(step.name) + (multi ? ' 第' + (rangeIdx + 1) + '段' : '');
-        const startCall = multi ? `updateStepSegmentDate('${topic.id}',${idx},${rangeIdx},'start',this.value)` : `updateStepDate('${topic.id}',${idx},'startDate',this.value)`;
-        const endCall = multi ? `updateStepSegmentDate('${topic.id}',${idx},${rangeIdx},'end',this.value)` : `updateStepDate('${topic.id}',${idx},'endDate',this.value)`;
-        html += `<div class="flex items-end gap-2 flex-wrap">
-          <label class="date-label">${step.key === 'publish' ? '日期' : multi ? '第' + (rangeIdx + 1) + '段开始' : '开始'}<input id="step-start-${idx}${rangeIdx ? '-' + rangeIdx : ''}" type="date" aria-label="${base} ${step.key === 'publish' ? '日期' : '开始'}" data-schedule-date data-step="${idx}" data-range="${rangeIdx}" data-field="start" value="${range.start}" onchange="${startCall}" class="date-input"></label>
-          ${step.key !== 'publish' ? `<label class="date-label">结束<input id="step-end-${idx}-${rangeIdx}" type="date" aria-label="${base} 结束" data-schedule-date data-step="${idx}" data-range="${rangeIdx}" data-field="end" value="${range.end}" onchange="${endCall}" class="date-input"></label>` : ''}
-          ${multi ? `<button onclick="deleteShootSegment('${topic.id}',${idx},${rangeIdx})" class="editor-button" aria-label="移除${base}">移除此段</button>` : ''}
-        </div>`;
-      });
-      html += `</div><div class="flex gap-2 flex-wrap">
-        <button data-needs-date onclick="delayStep('${topic.id}',${idx},-1)" ${ranges.length ? '' : 'disabled'} class="editor-button" aria-label="${escapeHtml(step.name)} 前移一天">前移一天</button>
-        <button data-needs-date onclick="delayStep('${topic.id}',${idx},1)" ${ranges.length ? '' : 'disabled'} class="editor-button" aria-label="${escapeHtml(step.name)} 后移一天">后移一天</button>
-        <button data-needs-date onclick="clearStep('${topic.id}',${idx})" ${ranges.length ? '' : 'disabled'} class="editor-button" aria-label="清空${escapeHtml(step.name)}日期">清空日期</button>
-        <button onclick="deleteStep('${topic.id}','${step.key}')" class="editor-button text-red-500" aria-label="删除${escapeHtml(step.name)}节点">删除节点</button>
-      </div>`;
-      if (step.key === 'shoot') html += `<div class="flex items-end gap-2 flex-wrap pt-1">
-        <label class="date-label">新增拍摄段<input type="date" id="new-segment-${idx}" data-draft aria-label="新增拍摄段日期" class="date-input"></label>
-        <button onclick="addShootSegment('${topic.id}',${idx})" class="editor-button">添加拍摄段</button>
-      </div>`;
-      html += '</div>';
-    });
-    html += `</div>
-      <form onsubmit="event.preventDefault();addCustomStep('${topic.id}')" class="flex gap-2">
-        <input id="new-step-name" data-draft aria-label="新工序名称" placeholder="新工序名称，如：审片、调色" class="min-w-0 flex-1 text-sm border border-beige-200 rounded-lg px-3 py-2">
-        <button class="editor-button">添加工序</button>
-      </form>
-    </section>
-    <section class="border-t border-beige-200 pt-4">
-      <h3 class="text-sm font-semibold mb-2">准备事项</h3>
-      <form onsubmit="event.preventDefault();addPrepFromInput('${topic.id}')" class="flex gap-2 mb-2">
-        <input id="prep-input-${topic.id}" data-draft aria-label="新增准备事项" placeholder="输入事项，回车添加" class="min-w-0 flex-1 text-sm border border-beige-200 rounded-lg px-3 py-2">
-        <button class="editor-button">添加事项</button>
-      </form>
-      ${tasks.map((task, idx) => `<div class="flex gap-2 items-center py-1">
-        <input type="checkbox" aria-label="完成准备事项${idx + 1}" ${task.done ? 'checked' : ''} onchange="togglePrep('${topic.id}',${idx})" class="w-4 h-4 accent-[#38A169]">
-        <input aria-label="准备事项${idx + 1}" value="${escapeHtml(task.text)}" oninput="updatePrepText('${topic.id}',${idx},this.value)" class="min-w-0 flex-1 text-sm px-2 py-1 ${task.done ? 'line-through' : ''}">
-        <button onclick="deletePrep('${topic.id}',${idx})" class="editor-button">删除</button></div>`).join('')}
-    </section>`;
-    if (cb) {
-      const segments = cb.shootSegments || cb.segments || detectShootSegments(cb.dates || []);
-      html += `<details class="border-t border-beige-200 pt-3"><summary class="text-sm cursor-pointer">已绑定拍摄通告 · 查看信息</summary>
-        <div class="text-xs space-y-2 mt-3"><p>通告拍摄：${segments.map(r => escapeHtml(r.start + (r.start === r.end ? '' : ' ~ ' + r.end))).join('，')}</p>
-        ${[['location','拍摄地'],['director','导演'],['photographer','摄影'],['production','制片'],['rd','研发'],['operational','运营'],['audio','收音'],['business','商务'],['advertiserNo','商单']].filter(([key]) => cb[key]).map(([key,label]) => `<p>${label}：${escapeHtml(cb[key])}</p>`).join('')}
-        <button onclick="importShootDates('${topic.id}')" class="editor-button">应用通告拍摄日期</button>
-        <button onclick="unlinkCanbox('${topic.id}')" class="editor-button">解除绑定</button></div></details>`;
+    const sameTopic = renderedTopicId === topic.id, drafts = {}, expanded={};
+    if(sameTopic) {
+      document.querySelectorAll('#edit-card-content [data-draft]').forEach(input=>drafts[input.id]=input.value);
+      document.querySelectorAll('#edit-card-content details[data-remember]').forEach(d=>expanded[d.id]=d.open);
     }
-    if (topic.tmlNote) html += `<details class="border-t border-beige-200 pt-3"><summary class="text-sm cursor-pointer">TML 原文</summary><pre id="tml-note-display" class="whitespace-pre-wrap text-xs mt-2">${escapeHtml(topic.tmlNote)}</pre><button onclick="editTmlNote('${topic.id}')" class="editor-button">编辑原文</button></details>`;
-    html += `<div class="border-t border-beige-200 pt-4 flex gap-2 flex-wrap">
-      <button onclick="openCanboxLink('${topic.id}')" class="editor-button">${cb ? '更换通告' : '绑定通告'}</button>
-      <button onclick="openTmlModal('${topic.id}')" class="editor-button">导入 TML</button>
-      <button onclick="exportTml('${topic.id}')" class="editor-button">下载 TML</button>
-      <button onclick="copyTml('${topic.id}')" class="editor-button">复制 TML</button>
-      <button onclick="${topic.completed ? 'uncompleteProject' : 'completeProject'}('${topic.id}')" class="editor-button text-green-700">${topic.completed ? '撤回完成' : '项目完成'}</button>
-      <button onclick="deleteTopic('${topic.id}')" class="editor-button text-red-500">删除项目</button>
-    </div>
-    <div id="history-container">${workflowHistoryHtml(topic)}</div>
-    <p class="time-meta">创建 ${shortTime(topic.createdAt)} · 修改 ${shortTime(topic.updatedAt)}</p>
-    </article>`;
-    el.innerHTML = html;
-    el.classList.toggle('workflow-compact', workbenchCompact);
-    Object.entries(drafts).forEach(([id, value]) => { const input = document.getElementById(id); if (input) input.value = value; });
-    document.getElementById('back-to-calendar').lastChild.textContent = workbenchReturn.view === 'card' ? '返回选题卡' : '返回日历';
-    renderedTopicId = topic.id;
-    if (!ganttStartDate) initGanttRange();
+    const focused=sameTopic && document.activeElement?.closest('#edit-card-content') ? document.activeElement.id : '';
+    const selection=focused?[document.activeElement.selectionStart,document.activeElement.selectionEnd]:null;
+    const x=sameTopic?document.getElementById('edit-gantt-wrapper')?.scrollLeft||0:0;
+    const el=document.getElementById('edit-card-content');el.innerHTML=projectEditorHtml(topic);
+    Object.entries(drafts).forEach(([id,v])=>{const input=document.getElementById(id);if(input)input.value=v;});
+    Object.entries(expanded).forEach(([id,open])=>{const d=document.getElementById(id);if(d)d.open=open;});
+    document.getElementById('back-to-calendar').lastChild.textContent=workbenchReturn.view==='card'?'返回选题卡':'返回日历';
+    renderedTopicId=topic.id;
+    if(!ganttStartDate)initGanttRange();
     refreshScheduleViews();
-    if (focused) {
-      const input = document.getElementById(focused); input?.focus({ preventScroll: true });
-      if (selection?.[0] !== null) { try { input?.setSelectionRange(...selection); } catch {} }
-    }
+    if(sameTopic)document.getElementById('edit-gantt-wrapper').scrollLeft=x;
+    else scrollEditorCalendar('first');
+    document.getElementById('edit-gantt-wrapper').onscroll=onEditorGanttScroll;
+    if(focused){const input=document.getElementById(focused);input?.focus({preventScroll:true});if(selection?.[0]!==null){try{input?.setSelectionRange(...selection);}catch{}}}
   }
 
   // ── 交互函数 ──
@@ -1842,6 +1739,7 @@
     const t = appState.topics.find(t => t.id === id), step = t?.productionSteps[idx];
     if (!step) return;
     step.done = !step.done;
+    if (step.done) { delete step.exception; step.skipped = false; syncPublishFromStep(t); }
     if (!step.done && t.completed) { t.completed = false; delete t.completedAt; }
     markUpdated(t); saveData(); logAction('step.toggle', id, { step: step.name, done: step.done });
     renderAll();
@@ -2186,7 +2084,7 @@
       const topic = {
         id: genId(), title: p.name, category: p.type === '视频' ? '广告' : '内容',
         projectType: '商业项目', platforms: Array.isArray(platforms) ? platforms : [],
-        publishDate, preparationTasks: [], productionSteps,
+        publishDate, preparationTasks: [], productionSteps, progressionMode:'calendar', timeZone:PocketWorkflow.DEFAULT_ZONE,
         createdAt: nowISO(), updatedAt: nowISO(),
         canboxImport: { source: 'canbox', shootStart, shootEnd, dates: p.dates, shootSegments, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations }
       };
@@ -2234,6 +2132,7 @@
     try {
       const res = await fetch('/api/system');
       const sys = await res.json();
+      PocketWorkflow.setClock(sys.serverTime);
       appState.version = sys.version;
       const el = document.getElementById('system-info');
       if (!el) return;
@@ -2977,6 +2876,7 @@
   let logPage = 1;
   let logTotalPages = 1;
   const ACTION_LABELS = {
+    'step.exception':'节点异常处理','topic.progression':'推进方式 / 时区','topic.duplicate':'复制项目','topic.status':'项目状态',
     'topic.create': '新建选题', 'topic.delete': '删除选题', 'topic.update': '修改选题',
     'step.toggle': '工序状态', 'step.update': '工序日期', 'step.reorder': '工序排序',
     'step.add': '新增工序', 'step.delete': '删除工序',
@@ -3037,9 +2937,22 @@
     if (_dirtyTopics.size || _savingTopics.size || _settingsDirty || _topicConflicts.size) { e.preventDefault(); e.returnValue = ''; }
   });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { document.activeElement?.blur(); persistLocalDraft(); flushSave(); } });
+  async function refreshWorkflowClock() {
+    if (document.hidden) return;
+    await loadSystemInfo();
+    if (currentView !== 'edit') { renderAll(); return; }
+    const topic=appState.topics.find(t=>t.id===selectedTopicId);if(!topic)return;
+    refreshWorkflowStatus(topic);
+    const wrapper=document.getElementById('edit-gantt-wrapper'),x=wrapper?.scrollLeft||0;
+    renderGanttTable('edit-gantt-container',getGanttDates(),[topic],false,true);
+    if(wrapper)wrapper.scrollLeft=x;
+  }
   // ── 初始化 ──
   loadData().then(() => { switchView('calendar'); connectSSE(); });
+  setInterval(refreshWorkflowClock,30000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshWorkflowClock();});
   document.addEventListener('keydown', e => {
+    if (document.querySelector('dialog[open]')) return;
     if ((e.metaKey||e.ctrlKey) && e.key==='s') { e.preventDefault(); document.activeElement?.blur(); flushSave(); }
     const isTyping = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName) || document.activeElement.isContentEditable;
     if ((e.metaKey||e.ctrlKey) && e.key==='z' && !isTyping && currentView === 'edit') { e.preventDefault(); undoSchedule(selectedTopicId); }

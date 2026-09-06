@@ -60,7 +60,7 @@ app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, 'index.ht
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get(['/view','/canbox'], (req, res) => res.sendFile(path.join(__dirname, 'view.html')));
 app.get('/view.webmanifest', (req, res) => res.json({ name:'Pocket OS 只读看板', short_name:'排期看板', start_url:'/view', scope:'/view', display:'standalone', theme_color:'#FAF7F2', background_color:'#FAF7F2', icons:[{src:'/icon-192.png',sizes:'192x192',type:'image/png'},{src:'/icon-512.png',sizes:'512x512',type:'image/png'}] }));
-for (const file of ['workflow.js','timeline.js','viewer.js','viewer.css','workbench.js','workbench.css'])
+for (const file of ['workflow.js','timeline.js','viewer.js','viewer.css','workbench.js','workbench.css','editor.js'])
   app.get('/' + file, (req, res) => res.sendFile(path.join(__dirname, file)));
 app.get('/manifest.json', (req, res) => res.sendFile(path.join(__dirname, 'manifest.json')));
 app.get('/icon-192.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-192.png')));
@@ -114,7 +114,7 @@ function broadcastSSE(event, data) {
 app.get('/api/view/data', async (req, res) => {
   try {
     const topics = await withMutationLock(readAllTopics);
-    res.json({ version: BUILD_VERSION, fetchedAt: new Date().toISOString(), topics: topics.map(Workflow.publicTopic) });
+    res.json({ version: BUILD_VERSION, fetchedAt: new Date().toISOString(), serverTime:new Date().toISOString(), topics: topics.map(Workflow.publicTopic) });
   } catch { res.status(500).json({ error: '看板数据读取失败' }); }
 });
 app.get('/api/view/events', (req, res) => {
@@ -183,7 +183,7 @@ app.get('/api/data', async (req, res) => {
       if (ts > maxTs) maxTs = ts;
     }
     const dataVersion = BUILD_VERSION + '.' + Math.floor(maxTs / 1000);
-    res.json({ ...appState, version: dataVersion, topics });
+    res.json({ ...appState, version: dataVersion, serverTime:new Date().toISOString(), topics });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -466,7 +466,7 @@ app.get('/api/system', (req, res) => {
   const hours = Math.floor((uptimeSeconds % 86400) / 3600);
   const minutes = Math.floor((uptimeSeconds % 3600) / 60);
   const uptime = days > 0 ? `${days}天 ${hours}小时 ${minutes}分钟` : hours > 0 ? `${hours}小时 ${minutes}分钟` : `${minutes}分钟`;
-  res.json({ version: BUILD_VERSION, startupTime: STARTUP_TIME, uptime, uptimeSeconds, clients: sseClients.size });
+  res.json({ version: BUILD_VERSION, serverTime:new Date().toISOString(), startupTime: STARTUP_TIME, uptime, uptimeSeconds, clients: sseClients.size });
 });
 
 // ── 公开只读 API ──

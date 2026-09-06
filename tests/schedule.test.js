@@ -27,6 +27,7 @@ function app() {
   });
   const workbench = fs.readFileSync(path.join(__dirname,'..','workbench.js'),'utf8');
   vm.runInContext(workbench.slice(0,workbench.lastIndexOf('initWorkbench();')), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'..','editor.js'),'utf8'),context);
   vm.runInContext(code.slice(0, code.indexOf('  // ── 初始化 ──')), context);
   vm.runInContext(`renderAll = renderEditPage = renderTopicList = refreshScheduleViews = refreshWorkflowStatus = showToast = logAction = switchView = loadSystemInfo = initMobile = () => {};
     appState.topics = [{id:'test', title:'Example', _version:0, publishDate:'2026-09-20', preparationTasks:[], productionSteps:[
@@ -40,6 +41,44 @@ function app() {
     data: () => JSON.parse(vm.runInContext('JSON.stringify(appState.topics[0])', context)) };
 }
 
+test('新建先输入名称，打开和取消不写入空项目，提交后默认自动推进',()=>{
+  const a=app(),before=a.data();a.run('createTopic()');
+  assert.equal(a.run('appState.topics.length'),1);assert.deepEqual(a.data(),before);
+  a.element('new-project-name').value='';a.run('submitNewProject()');assert.equal(a.run('appState.topics.length'),1);
+  a.element('new-project-name').value='新项目';a.element('create-template').value='talk';a.element('create-progression').value='calendar';a.run('submitNewProject()');
+  assert.equal(a.run('appState.topics.length'),2);assert.equal(a.run('appState.topics[1].progressionMode'),'calendar');
+});
+test('编辑页、侧栏和卡片使用真实渲染函数，日期入口在节点前，管理操作在末尾',()=>{
+  const a=app();const html=a.run('projectEditorHtml(appState.topics[0])');
+  assert(html.indexOf('安排已知日期')<html.indexOf('项目日历'));assert(html.indexOf('项目日历')<html.indexOf('制作节点'));
+  assert(html.indexOf('制作节点')<html.indexOf('项目管理'));assert(!html.includes('id="topic-publish"'));
+  assert.match(a.run('renderTopicItem(appState.topics[0])'),/topic-item/);
+  a.run('renderCardList(); renderTopicSummaries()');
+});
+test('异常暂停不改任何日期；过期窗口被拒绝；人工完成可解除异常',()=>{
+  const a=app(),before=a.data();a.run("openNodeException('test','shoot')");
+  a.element('exception-kind').value='waiting';a.element('exception-reason').value='客户未反馈';a.run('applyNodeException()');
+  const after=a.data();assert.deepEqual(after.productionSteps[1].segments,before.productionSteps[1].segments);
+  assert.equal(after.productionSteps[1].exception.kind,'waiting');
+  assert.deepEqual(after.productionSteps[2],before.productionSteps[2]);
+  a.run("openNodeException('test','shoot');appState.topics[0].productionSteps[1].name='已变更'");
+  a.element('exception-kind').value='paused';a.run('applyNodeException()');
+  assert.equal(a.data().productionSteps[1].exception.kind,'waiting');
+  a.run("toggleStep('test',1)");assert.equal(a.data().productionSteps[1].done,true);assert.equal(a.data().productionSteps[1].exception,undefined);
+});
+test('具体延期只改当前节点并撤回其人工确认，无效日期不清除原异常',()=>{
+  const a=app();a.run("appState.topics[0].productionSteps[2].exception={kind:'paused'};openNodeException('test','acopy',true)");
+  const start={value:'2099-01-10'},end={value:'2099-01-09'};a.context.document.querySelectorAll=selector=>selector==='[data-exception-start]'?[start]:selector==='[data-exception-end]'?[end]:[];
+  a.element('exception-kind').value='reschedule';a.run('applyNodeException()');assert.equal(a.data().productionSteps[2].exception.kind,'paused');
+  end.value='2099-01-12';a.run('applyNodeException()');assert.equal(a.data().productionSteps[2].startDate,'2099-01-10');assert.equal(a.data().productionSteps[2].exception,undefined);
+  assert.equal(a.data().publishDate,'2026-09-20');
+});
+test('标为不适用可恢复原日期，发布字段一致；日期撤销保留后来添加的暂停',()=>{
+  const a=app();a.run("setNodeSkipped('test',4)");assert.equal(a.data().publishDate,'');
+  a.run("setNodeSkipped('test',4)");assert.equal(a.data().publishDate,'2026-09-20');
+  a.run("updateStepDate('test',2,'startDate','2026-09-10');appState.topics[0].productionSteps[2].exception={kind:'paused'};undoSchedule('test')");
+  assert.equal(a.data().productionSteps[2].exception.kind,'paused');
+});
 test('工作台色块与概览一致，多段拍摄尚有后续段不误报前段延期',()=>{
   const a=app();
   a.run("todayStr = () => '2026-09-06'");
@@ -48,7 +87,7 @@ test('工作台色块与概览一致，多段拍摄尚有后续段不误报前�
 });
 
 test('新建项目全部未安排，Canbox 仅填写实际拍摄日期', () => {
-  const a = app(); a.run('createTopic()');
+  const a = app(); a.run("createTopic('', '测试新项目')");
   const topic = JSON.parse(a.run('JSON.stringify(appState.topics[1])'));
   assert.equal(topic.publishDate, '');
   assert.ok(topic.productionSteps.every(s => !s.startDate && s.cleared));
@@ -58,12 +97,12 @@ test('新建项目全部未安排，Canbox 仅填写实际拍摄日期', () => {
 });
 
 test('模板和复制项目只保留结构，不复制日期、完成状态、通告或历史', () => {
-  const a=app();a.run("createTopic('commercial')");
+  const a=app();a.run("createTopic('commercial','商业测试')");
   const templated=JSON.parse(a.run('JSON.stringify(appState.topics[1])'));
   assert(templated.productionSteps.some(s=>s.key==='review'));
   assert(templated.productionSteps.every(s=>s.cleared&&!s.done&&!s.startDate));
   assert.equal(templated.preparationTasks.length,3);
-  a.run("appState.topics[0].canboxImport={secret:'old'}; appState.topics[0].scheduleHistory=[{}]; duplicateProject('test')");
+  a.run("appState.topics[0].canboxImport={secret:'old'}; appState.topics[0].scheduleHistory=[{}]; duplicateProject('test','复制测试')");
   const copy=JSON.parse(a.run('JSON.stringify(appState.topics[2])'));
   assert(copy.productionSteps.every(s=>!s.startDate&&!s.done));
   assert.equal(copy.canboxImport,undefined);assert.equal(copy.scheduleHistory,undefined);assert.equal(copy.publishDate,'');

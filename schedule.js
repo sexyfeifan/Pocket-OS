@@ -16,7 +16,7 @@
     return date.toISOString().slice(0, 10);
   }
   function ranges(step) {
-    if (!step || step.cleared) return [];
+    if (!step || step.cleared || step.skipped) return [];
     const items = step.key === 'shoot' && step.segments?.length
       ? step.segments : step.startDate ? [{ start: step.startDate, end: step.endDate || step.startDate }] : [];
     return items.filter(r => validDate(r.start) && validDate(r.end) && r.start <= r.end)
@@ -38,6 +38,7 @@
     step.startDate = next[0].start;
     step.endDate = next[next.length - 1].end;
     step.cleared = false;
+    step.skipped = false;
     if (step.key === 'shoot') step.segments = next;
     else delete step.segments;
     step.duration = duration(step);

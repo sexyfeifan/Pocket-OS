@@ -3,7 +3,7 @@ const W=require('../workflow'),S=require('../schedule');
 const topic={id:'sample',title:'样例',productionSteps:[{key:'shoot',name:'拍摄',done:true,startDate:'2026-09-01',endDate:'2026-09-05',segments:[{start:'2026-09-01',end:'2026-09-02'},{start:'2026-09-05',end:'2026-09-05'}]},{key:'custom',name:'客户审片',cleared:true,done:false}]};
 test('工作台和看板统计包含未排期节点，多段拍摄使用同一日期模型',()=>{
   assert.deepEqual(W.stats(topic),{total:2,done:1,scheduled:1,unscheduled:1,percent:50});
-  assert.equal(W.progressText(topic),'已完成 1/2 个节点 · 1 个未排期');
+  assert.equal(W.progressText(topic),'已完成 1/2 个节点');
   assert.equal(W.events([topic],'2026-09-03','2026-09-04').length,0);
   assert.equal(W.events([topic],'2026-09-01','2026-09-05').length,2);
   assert.equal(W.stats(W.publicTopic(topic)).percent,W.stats(topic).percent);
@@ -34,7 +34,7 @@ test('旧数据发布日期统一只在显示模型中处理，不修改原始�
   assert.equal(W.publicTopic(absent).productionSteps.length,1);assert.equal(absent.productionSteps.length,0);
 });
 test('新模块和页面脚本均可解析，只读前端仅使用查看 API',()=>{
-  for(const file of ['workflow.js','viewer.js','workbench.js'])new vm.Script(fs.readFileSync(path.join(__dirname,'..',file),'utf8'));
+  for(const file of ['workflow.js','timeline.js','viewer.js','workbench.js'])new vm.Script(fs.readFileSync(path.join(__dirname,'..',file),'utf8'));
   const source=fs.readFileSync(path.join(__dirname,'..','viewer.js'),'utf8');
   assert(!/method\s*:\s*['"](?:POST|PUT|PATCH|DELETE)/i.test(source));
   assert(!/\/api\/(?:data|topic|settings|log|export)/.test(source));

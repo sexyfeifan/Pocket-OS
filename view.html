@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#FAF7F2">
 <title>Pocket OS · 只读看板</title><link rel="icon" href="/favicon.ico"><link rel="manifest" href="/view.webmanifest"><link rel="stylesheet" href="/viewer.css">
-<script defer src="/schedule.js"></script><script defer src="/workflow.js"></script><script defer src="/viewer.js"></script></head>
+<script defer src="/schedule.js"></script><script defer src="/workflow.js"></script><script defer src="/timeline.js"></script><script defer src="/viewer.js"></script></head>
 <body>
 <header><div class="brand"><span class="brand-icon">P</span><div><strong>Pocket OS</strong><small>内容制作 · 全局看板</small></div><span class="badge">只读</span></div>
 <div class="header-actions"><span id="connection" role="status">正在读取…</span><button id="refresh">刷新</button><button id="fullscreen">全屏</button></div></header>
@@ -17,7 +17,7 @@
 </section>
 <section id="date-controls" class="date-controls" hidden><button id="prev" aria-label="上一个时间段">←</button><button id="today">今天</button><button id="next" aria-label="下一个时间段">→</button><strong id="date-label"></strong>
 <select id="calendar-mode" aria-label="日历范围"><option value="month">月历</option><option value="week">周历</option></select>
-<select id="zoom" aria-label="时间轴范围"><option value="42">六周全景</option><option value="14">两周细览</option></select></section>
+<select id="zoom" aria-label="时间轴范围"><option value="14">两周细览</option><option value="42">六周全景</option></select></section>
 <div id="content" aria-live="polite"><p class="empty">正在读取项目…</p></div>
 <footer>只读看板 · 日期以工作台保存的安排为准 · 重叠节点可并行进行</footer>
 </main>

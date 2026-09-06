@@ -40,6 +40,13 @@ function app() {
     data: () => JSON.parse(vm.runInContext('JSON.stringify(appState.topics[0])', context)) };
 }
 
+test('工作台色块与概览一致，多段拍摄尚有后续段不误报前段延期',()=>{
+  const a=app();
+  a.run("todayStr = () => '2026-09-06'");
+  const blocks=JSON.parse(a.run("JSON.stringify(buildMergedBlocks([appState.topics[0].productionSteps[1]],['2026-09-03','2026-09-04','2026-09-05','2026-09-06','2026-09-07','2026-09-08']))"));
+  assert.equal(blocks.length,2);assert(blocks.every(b=>!b.conflict));
+});
+
 test('新建项目全部未安排，Canbox 仅填写实际拍摄日期', () => {
   const a = app(); a.run('createTopic()');
   const topic = JSON.parse(a.run('JSON.stringify(appState.topics[1])'));

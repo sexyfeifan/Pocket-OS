@@ -16,17 +16,16 @@ function renderWorkflowOverview() {
   const toolbar=document.getElementById('workflow-toolbar');if(!toolbar)return;
   toolbar.hidden=currentView==='edit';
   const box=document.getElementById('workflow-overview');box.hidden=currentView==='edit';
-  const a=PocketWorkflow.attention(filteredWorkbenchTopics(),todayStr());
-  const entries=[['今天进行中',a.today],['七天内拍摄 / 发布',a.upcoming],['逾期未完成',a.overdue],['待排 / 待反馈 / 调整中',a.unresolved]];
+  const entries=PocketWorkflow.overviewPanels(filteredWorkbenchTopics(),todayStr());
   const open=box.querySelector('details')?.open ?? true;
-  box.innerHTML=`<details ${open?'open':''}><summary>工作概览 · 提醒不会自动改期</summary><div class="attention-grid">${entries.map(([name,rows])=>`<section><h4>${name} · ${rows.length}</h4>${rows.slice(0,5).map(r=>`<button onclick="selectTopic('${r.topicId||r.id}')">${escapeHtml(r.title)}${r.name?' · '+escapeHtml(r.name):''}<small>${r.start?escapeHtml(PocketWorkflow.rangeText([{start:r.start,end:r.end}])):escapeHtml(PocketWorkflow.scheduleStatus(r))}</small></button>`).join('')}${!rows.length?'<p class="workflow-help">暂无</p>':''}${rows.length>5?'<a href="/view" target="_blank" rel="noopener" class="workflow-help">在只读看板查看全部 ↗</a>':''}</section>`).join('')}</div></details>`;
+  box.innerHTML=`<details ${open?'open':''}><summary>工作概览 · 按实际日期查看进展</summary><p class="workflow-help">未填日期不代表排期未完成。下一节点按日期查找，跳过未设置日期的节点；并行节点分别显示。提醒不会自动改期。</p><div class="attention-grid">${entries.map(({title,rows,empty})=>`<section><h4>${title} · ${rows.length}</h4>${rows.slice(0,5).map(r=>`<button onclick="selectTopic('${r.id}')">${escapeHtml(r.title)}<small>${escapeHtml(r.text)}</small></button>`).join('')}${!rows.length?`<p class="workflow-help">${empty}</p>`:''}${rows.length>5?'<a href="/view" target="_blank" rel="noopener" class="workflow-help">在只读看板查看全部 ↗</a>':''}</section>`).join('')}</div></details>`;
   const select=document.getElementById('new-project-template'),selected=select.value;
   select.innerHTML='<option value="">标准工序</option>'+[...PocketWorkflow.templates,...(appState.settings.projectTemplates||[])].map(t=>`<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join('');select.value=selected;
 }
 function workflowEditorHtml(t) {
   return `<div id="workflow-status" class="workflow-fields"><label>项目状态<select aria-label="项目状态" onchange="setLifecycle('${t.id}',this.value)">${Object.entries(PocketWorkflow.lifecycleLabels).map(([k,v])=>`<option value="${k}" ${PocketWorkflow.lifecycle(t)===k?'selected':''}>${v}</option>`).join('')}</select></label><span id="schedule-status" class="workflow-help">排期：${escapeHtml(PocketWorkflow.scheduleStatus(t))}</span><button class="editor-button" onclick="confirmNewSchedule('${t.id}')">确认当前排期</button><label>变动原因<input aria-label="排期变动原因" id="pending-reason" data-draft placeholder="场地 / 客户反馈…" value="${escapeHtml(t.pendingReason||'')}"></label><button class="editor-button" onclick="markProjectPending('${t.id}')">标记调整中</button></div>
   <div class="workflow-fields"><button class="editor-button" onclick="duplicateProject('${t.id}')">复制为新项目</button><label><input type="checkbox" onchange="toggleCompact(this.checked)" ${workbenchCompact?'checked':''}>紧凑排期</label></div>
-  <p class="workflow-help">项目状态与排期状态相互独立。确认后改期会重新待确认，不改动其他节点。</p>`;
+  <p class="workflow-help">项目状态与排期状态相互独立。不要求每个节点填写日期；确认后改期会取消本次确认，不改动其他节点。</p>`;
 }
 function workflowHistoryHtml(t) {
   const history=[...(t.scheduleHistory||[])].reverse();

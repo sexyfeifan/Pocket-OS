@@ -12,6 +12,7 @@ test.after(async()=>{if(child){const stopped=new Promise(r=>child.once('exit',r)
 test('只读入口要求身份，管理凭证与查看凭证隔离',async()=>{
   assert.equal((await fetch(base+'/view')).status,401);
   assert.equal((await request('/view')).status,200);assert.equal((await request('/canbox')).status,200);
+  assert.equal((await request('/timeline.js')).status,200);
   assert.equal((await request('/index.html')).status,403);assert.equal((await request('/','editor')).status,200);
   const manifest=await(await request('/view.webmanifest')).json();assert.equal(manifest.start_url,'/view');
   for(const p of ['/api/data','/api/export','/api/logs','/api/events','/api/public/topics','/workbench.js'])assert.equal((await request(p)).status,403,p);

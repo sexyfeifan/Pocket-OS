@@ -48,7 +48,7 @@ app.use((req, res, next) => {
   if (matches(ACCESS_PASSWORD)) { req.accessRole = 'editor'; return next(); }
   if (matches(VIEW_PASSWORD)) {
     req.accessRole = 'viewer';
-    const allowed = ['/view','/canbox','/view.webmanifest','/api/view/data','/api/view/events','/schedule.js','/workflow.js','/viewer.js','/viewer.css','/icon-192.png','/icon-512.png','/apple-touch-icon.png','/favicon.ico'];
+    const allowed = ['/view','/canbox','/view.webmanifest','/api/view/data','/api/view/events','/schedule.js','/workflow.js','/timeline.js','/viewer.js','/viewer.css','/icon-192.png','/icon-512.png','/apple-touch-icon.png','/favicon.ico'];
     if (['GET','HEAD'].includes(req.method) && allowed.includes(req.path)) return next();
     return res.status(403).json({ error: '查看权限不能访问管理功能或修改项目' });
   }
@@ -60,7 +60,7 @@ app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, 'index.ht
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get(['/view','/canbox'], (req, res) => res.sendFile(path.join(__dirname, 'view.html')));
 app.get('/view.webmanifest', (req, res) => res.json({ name:'Pocket OS 只读看板', short_name:'排期看板', start_url:'/view', scope:'/view', display:'standalone', theme_color:'#FAF7F2', background_color:'#FAF7F2', icons:[{src:'/icon-192.png',sizes:'192x192',type:'image/png'},{src:'/icon-512.png',sizes:'512x512',type:'image/png'}] }));
-for (const file of ['workflow.js','viewer.js','viewer.css','workbench.js','workbench.css'])
+for (const file of ['workflow.js','timeline.js','viewer.js','viewer.css','workbench.js','workbench.css'])
   app.get('/' + file, (req, res) => res.sendFile(path.join(__dirname, file)));
 app.get('/manifest.json', (req, res) => res.sendFile(path.join(__dirname, 'manifest.json')));
 app.get('/icon-192.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-192.png')));

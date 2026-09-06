@@ -1184,7 +1184,7 @@
           if (inRange && mergeStart === null) mergeStart = i;
           if ((!inRange || i === dates.length - 1) && mergeStart !== null) {
             const endIdx = inRange ? i : i - 1;
-            const delayed = !step.done && range.end < todayFmt;
+            const delayed = !step.done && range.end === getStepRanges(step).at(-1)?.end && range.end < todayFmt;
             const upcoming = !step.done && range.end >= todayFmt && range.end <= soonFmt;
             blocks.push({ step, range, rangeIndex, startIdx: mergeStart, endIdx, conflict: delayed, upcoming, lane: 0 });
             mergeStart = null;

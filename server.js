@@ -4,28 +4,71 @@ const fsSync = require('fs');
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
+const Workflow = require('./workflow');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = process.env.POCKET_OS_DATA_DIR
+  ? path.resolve(process.env.POCKET_OS_DATA_DIR)
+  : path.join(__dirname, 'data');
 const TOPICS_DIR = path.join(DATA_DIR, 'topics');
 const APP_STATE_FILE = path.join(DATA_DIR, 'app_state.json');
 const LEGACY_DATA_FILE = path.join(DATA_DIR, 'schedule_data.json');
 const LOG_DIR = path.join(DATA_DIR, 'logs');
 const STARTUP_TIME = new Date().toISOString();
 const BUILD_VERSION = process.env.APP_VERSION || (() => { try { return JSON.parse(fsSync.readFileSync(path.join(__dirname, 'package.json'), 'utf-8')).version; } catch { return 'dev'; } })();
+const ACCESS_PASSWORD = process.env.POCKET_OS_PASSWORD || '';
+const VIEW_PASSWORD = process.env.POCKET_OS_VIEW_PASSWORD || '';
+if (VIEW_PASSWORD && (!ACCESS_PASSWORD || VIEW_PASSWORD === ACCESS_PASSWORD)) {
+  throw new Error('查看密码要求同时设置不同的管理密码 POCKET_OS_PASSWORD');
+}
 
 app.use(express.json({ limit: '10mb' }));
+
+// 可选的整站 Basic Auth。默认关闭，公网或反向代理部署时建议设置 POCKET_OS_PASSWORD。
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
+  if (!['GET','HEAD','OPTIONS'].includes(req.method)) {
+    const origin = req.headers.origin;
+    if (req.headers['sec-fetch-site'] === 'cross-site' || (origin && (() => { try { return new URL(origin).host !== req.headers.host; } catch { return true; } })()))
+      return res.status(403).json({ error: '不接受跨站修改请求' });
+  }
+  if (!ACCESS_PASSWORD) { req.accessRole = 'editor'; return next(); }
+  const header = req.headers.authorization || '';
+  const encoded = header.startsWith('Basic ') ? header.slice(6) : '';
+  let password = '';
+  try { password = Buffer.from(encoded, 'base64').toString('utf8').split(':').slice(1).join(':'); } catch {}
+  const matches = value => {
+    const actual = Buffer.from(password), expected = Buffer.from(value);
+    return !!value && actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+  };
+  if (matches(ACCESS_PASSWORD)) { req.accessRole = 'editor'; return next(); }
+  if (matches(VIEW_PASSWORD)) {
+    req.accessRole = 'viewer';
+    const allowed = ['/view','/canbox','/view.webmanifest','/api/view/data','/api/view/events','/schedule.js','/workflow.js','/viewer.js','/viewer.css','/icon-192.png','/icon-512.png','/apple-touch-icon.png','/favicon.ico'];
+    if (['GET','HEAD'].includes(req.method) && allowed.includes(req.path)) return next();
+    return res.status(403).json({ error: '查看权限不能访问管理功能或修改项目' });
+  }
+  res.setHeader('WWW-Authenticate', 'Basic realm="Pocket OS"');
+  return res.status(401).send('需要 Pocket OS 访问密码');
+});
 app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-app.get('/canbox', (req, res) => res.sendFile(path.join(__dirname, 'canbox.html')));
+app.get(['/view','/canbox'], (req, res) => res.sendFile(path.join(__dirname, 'view.html')));
+app.get('/view.webmanifest', (req, res) => res.json({ name:'Pocket OS 只读看板', short_name:'排期看板', start_url:'/view', scope:'/view', display:'standalone', theme_color:'#FAF7F2', background_color:'#FAF7F2', icons:[{src:'/icon-192.png',sizes:'192x192',type:'image/png'},{src:'/icon-512.png',sizes:'512x512',type:'image/png'}] }));
+for (const file of ['workflow.js','viewer.js','viewer.css','workbench.js','workbench.css'])
+  app.get('/' + file, (req, res) => res.sendFile(path.join(__dirname, file)));
 app.get('/manifest.json', (req, res) => res.sendFile(path.join(__dirname, 'manifest.json')));
 app.get('/icon-192.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-192.png')));
 app.get('/icon-512.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-512.png')));
 app.get('/apple-touch-icon.png', (req, res) => res.sendFile(path.join(__dirname, 'apple-touch-icon.png')));
 app.get('/favicon.ico', (req, res) => res.sendFile(path.join(__dirname, 'favicon.ico')));
 app.get('/html2canvas.min.js', (req, res) => res.sendFile(path.join(__dirname, 'html2canvas.min.js')));
+app.get('/schedule.js', (req, res) => res.sendFile(path.join(__dirname, 'schedule.js')));
 
 // ── 初始化目录结构 ──
 if (!fsSync.existsSync(DATA_DIR)) fsSync.mkdirSync(DATA_DIR, { recursive: true });
@@ -39,6 +82,7 @@ async function migrateFromLegacy() {
     const data = JSON.parse(raw);
     if (data.topics && data.topics.length) {
       for (const topic of data.topics) {
+        if (!isValidTopicId(topic.id)) throw new Error(`旧数据包含非法选题 ID: ${topic.id}`);
         if (!topic._version) topic._version = 1;
         const topicFile = path.join(TOPICS_DIR, `${topic.id}.json`);
         if (!fsSync.existsSync(topicFile)) {
@@ -46,7 +90,7 @@ async function migrateFromLegacy() {
         }
       }
     }
-    const appState = { version: data.version || BUILD_VERSION, lastModified: data.lastModified, settings: data.settings || { theme: 'beige-light' } };
+    const appState = { version: BUILD_VERSION, lastModified: data.lastModified, settings: sanitizeSettings(data.settings || { theme: 'beige-light' }) };
     if (!fsSync.existsSync(APP_STATE_FILE)) {
       await fs.writeFile(APP_STATE_FILE, JSON.stringify(appState, null, 2));
     }
@@ -57,13 +101,29 @@ async function migrateFromLegacy() {
 
 // ── SSE 实时推送 ──
 const sseClients = new Set();
+const viewClients = new Set();
 
 function broadcastSSE(event, data) {
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const res of sseClients) {
     try { res.write(msg); } catch { sseClients.delete(res); }
   }
+  for (const res of viewClients) { try { res.write('event: changed\ndata: {}\n\n'); } catch { viewClients.delete(res); } }
 }
+
+app.get('/api/view/data', async (req, res) => {
+  try {
+    const topics = await withMutationLock(readAllTopics);
+    res.json({ version: BUILD_VERSION, fetchedAt: new Date().toISOString(), topics: topics.map(Workflow.publicTopic) });
+  } catch { res.status(500).json({ error: '看板数据读取失败' }); }
+});
+app.get('/api/view/events', (req, res) => {
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.flushHeaders(); res.write('event: connected\ndata: {}\n\n'); viewClients.add(res);
+  const timer = setInterval(() => res.write(': heartbeat\n\n'), 20000);
+  req.on('close', () => { clearInterval(timer); viewClients.delete(res); });
+});
+app.get('/api/access', (req, res) => res.json({ protected: !!ACCESS_PASSWORD, viewerEnabled: !!VIEW_PASSWORD }));
 
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -78,7 +138,11 @@ app.get('/api/events', (req, res) => {
 
 // ── 读取辅助 ──
 async function readAppState() {
-  try { return JSON.parse(await fs.readFile(APP_STATE_FILE, 'utf-8')); }
+  try {
+    const state = JSON.parse(await fs.readFile(APP_STATE_FILE, 'utf-8'));
+    state.settings = sanitizeSettings(state.settings || {});
+    return state;
+  }
   catch { return { version: BUILD_VERSION, lastModified: new Date().toISOString(), settings: { theme: 'beige-light' } }; }
 }
 
@@ -95,15 +159,23 @@ async function readAllTopics() {
 }
 
 async function atomicWrite(filePath, data) {
-  const tmp = filePath + '.tmp';
+  const tmp = `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(data, null, 2));
   await fs.rename(tmp, filePath);
+}
+
+// 串行化所有会改变 JSON 文件的操作，避免并发 read-modify-write 丢数据。
+let mutationQueue = Promise.resolve();
+function withMutationLock(task) {
+  const result = mutationQueue.then(task, task);
+  mutationQueue = result.catch(() => {});
+  return result;
 }
 
 // ── GET /api/data — 读取全部数据（兼容旧格式）──
 app.get('/api/data', async (req, res) => {
   try {
-    const [appState, topics] = await Promise.all([readAppState(), readAllTopics()]);
+    const [appState, topics] = await withMutationLock(() => Promise.all([readAppState(), readAllTopics()]));
     // 动态版本号：取所有 updatedAt 最大值的时间戳部分
     let maxTs = Date.parse(appState.lastModified || 0) || 0;
     for (const t of topics) {
@@ -127,31 +199,53 @@ app.post('/api/topic/:id', async (req, res) => {
   if (!isValidTopicId(req.params.id)) return res.status(400).json({ success: false, error: 'invalid topic id' });
   try {
     const topic = req.body;
+    if (!topic || topic.id !== req.params.id || !isValidTopicId(topic.id)) {
+      return res.status(400).json({ success: false, error: 'topic id mismatch' });
+    }
     const topicFile = path.join(TOPICS_DIR, `${req.params.id}.json`);
     const clientVersion = topic._version || 0;
 
-    // 版本校验：如果服务端已有该文件，检查版本号
-    if (fsSync.existsSync(topicFile)) {
-      try {
-        const existing = JSON.parse(await fs.readFile(topicFile, 'utf-8'));
-        if (existing._version && existing._version > clientVersion) {
-          return res.status(409).json({
-            success: false, error: 'conflict',
-            message: '该选题已被其他设备修改，请刷新后重试',
-            serverVersion: existing._version, clientVersion
-          });
+    const saveResult = await withMutationLock(async () => {
+      let existing = null;
+      if (fsSync.existsSync(topicFile)) {
+        existing = JSON.parse(await fs.readFile(topicFile, 'utf-8'));
+        const serverVersion = existing._version || 0;
+        if (serverVersion !== clientVersion) {
+          return { conflict: true, existing, serverVersion };
         }
-      } catch {}
+      } else if (clientVersion !== 0) {
+        return { conflict: true, existing: null, serverVersion: 0 };
+      }
+
+      const saved = { ...topic, _version: clientVersion + 1, updatedAt: new Date().toISOString() };
+      saved.scheduleHistory = (Array.isArray(existing?.scheduleHistory) ? existing.scheduleHistory : []).slice(-30);
+      const before = Workflow.snapshot(existing || {}), after = Workflow.snapshot(saved);
+      const changes = Workflow.diff(before, after);
+      if (changes.length) {
+        saved.scheduleHistory.push({ id: crypto.randomUUID(), at: saved.updatedAt, before, after, changes });
+        saved.scheduleHistory = saved.scheduleHistory.slice(-30);
+        if (existing?.scheduleConfirmed) saved.scheduleConfirmed = false;
+      }
+      await atomicWrite(topicFile, saved);
+      return { saved };
+    });
+
+    if (saveResult.conflict) {
+      return res.status(409).json({
+        success: false, error: 'conflict',
+        message: '该选题已被其他设备修改，请选择保留哪一版',
+        serverVersion: saveResult.serverVersion,
+        clientVersion,
+        serverTopic: saveResult.existing
+      });
     }
 
-    topic._version = clientVersion + 1;
-    topic.updatedAt = new Date().toISOString();
-    await atomicWrite(topicFile, topic);
+    const saved = saveResult.saved;
 
     // 广播变更
-    broadcastSSE('topic-update', { id: topic.id, _version: topic._version, updatedAt: topic.updatedAt, title: topic.title });
+    broadcastSSE('topic-update', { id: saved.id, _version: saved._version, updatedAt: saved.updatedAt, title: saved.title });
 
-    res.json({ success: true, _version: topic._version });
+    res.json({ success: true, _version: saved._version, updatedAt: saved.updatedAt, scheduleHistory: saved.scheduleHistory, scheduleConfirmed: saved.scheduleConfirmed });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -162,7 +256,9 @@ app.delete('/api/topic/:id', async (req, res) => {
   if (!isValidTopicId(req.params.id)) return res.status(400).json({ success: false, error: 'invalid topic id' });
   try {
     const topicFile = path.join(TOPICS_DIR, `${req.params.id}.json`);
-    if (fsSync.existsSync(topicFile)) await fs.unlink(topicFile);
+    await withMutationLock(async () => {
+      if (fsSync.existsSync(topicFile)) await fs.unlink(topicFile);
+    });
     broadcastSSE('topic-delete', { id: req.params.id });
     res.json({ success: true });
   } catch (err) {
@@ -173,10 +269,13 @@ app.delete('/api/topic/:id', async (req, res) => {
 // ── POST /api/settings — 保存设置 ──
 app.post('/api/settings', async (req, res) => {
   try {
-    const appState = await readAppState();
-    appState.settings = req.body;
-    appState.lastModified = new Date().toISOString();
-    await atomicWrite(APP_STATE_FILE, appState);
+    const appState = await withMutationLock(async () => {
+      const state = await readAppState();
+      state.settings = sanitizeSettings(req.body);
+      state.lastModified = new Date().toISOString();
+      await atomicWrite(APP_STATE_FILE, state);
+      return state;
+    });
     broadcastSSE('settings-update', { lastModified: appState.lastModified });
     res.json({ success: true });
   } catch (err) {
@@ -188,32 +287,66 @@ app.post('/api/settings', async (req, res) => {
 app.post('/api/data', async (req, res) => {
   try {
     const payload = req.body;
-    payload.lastModified = new Date().toISOString();
-
-    // 保存设置
-    const appState = { version: payload.version || BUILD_VERSION, lastModified: payload.lastModified, settings: payload.settings || { theme: 'beige-light' } };
-    await atomicWrite(APP_STATE_FILE, appState);
-
-    // 保存每个选题
-    if (payload.topics && Array.isArray(payload.topics)) {
-      for (const topic of payload.topics) {
-        if (!topic._version) topic._version = 1;
-        const topicFile = path.join(TOPICS_DIR, `${topic.id}.json`);
-        await atomicWrite(topicFile, topic);
+    if (!payload || !Array.isArray(payload.topics)) {
+      return res.status(400).json({ success: false, error: 'topics must be an array' });
+    }
+    const seen = new Set();
+    for (const topic of payload.topics) {
+      if (!topic || !isValidTopicId(topic.id) || seen.has(topic.id)) {
+        return res.status(400).json({ success: false, error: `invalid or duplicate topic id: ${topic?.id || ''}` });
       }
+      seen.add(topic.id);
     }
 
-    broadcastSSE('full-sync', { lastModified: payload.lastModified, topicCount: payload.topics?.length || 0 });
-    res.json({ success: true, message: '数据已同步到服务器', lastModified: payload.lastModified });
+    const lastModified = new Date().toISOString();
+    const appState = {
+      version: BUILD_VERSION,
+      lastModified,
+      settings: sanitizeSettings(payload.settings || { theme: 'beige-light' })
+    };
+
+    await withMutationLock(async () => {
+      const stageDir = path.join(DATA_DIR, `.topics-import-${crypto.randomUUID()}`);
+      const backupDir = path.join(DATA_DIR, `.topics-backup-${crypto.randomUUID()}`);
+      await fs.mkdir(stageDir, { recursive: true });
+      try {
+        for (const topic of payload.topics) {
+          // 恢复后使用新的版本纪元，确保仍打开旧页面的设备无法覆盖刚恢复的数据。
+          const saved = { ...topic, _version: Math.max(Date.now(), (Number(topic._version) || 0) + 1), updatedAt: lastModified };
+          await fs.writeFile(path.join(stageDir, `${topic.id}.json`), JSON.stringify(saved, null, 2));
+        }
+        await fs.rename(TOPICS_DIR, backupDir);
+        try {
+          await fs.rename(stageDir, TOPICS_DIR);
+          await atomicWrite(APP_STATE_FILE, appState);
+          await fs.rm(backupDir, { recursive: true, force: true });
+        } catch (err) {
+          await fs.rm(TOPICS_DIR, { recursive: true, force: true }).catch(() => {});
+          await fs.rename(backupDir, TOPICS_DIR).catch(() => {});
+          throw err;
+        }
+      } finally {
+        await fs.rm(stageDir, { recursive: true, force: true }).catch(() => {});
+      }
+    });
+
+    broadcastSSE('full-sync', { lastModified, topicCount: payload.topics.length });
+    res.json({ success: true, message: '备份已完整恢复', lastModified, topicCount: payload.topics.length });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
+function sanitizeSettings(settings) {
+  const clean = settings && typeof settings === 'object' ? JSON.parse(JSON.stringify(settings)) : {};
+  if (clean.canbox) delete clean.canbox.password;
+  return clean;
+}
+
 // ── GET /api/export — 导出 JSON ──
 app.get('/api/export', async (req, res) => {
   try {
-    const [appState, topics] = await Promise.all([readAppState(), readAllTopics()]);
+    const [appState, topics] = await withMutationLock(() => Promise.all([readAppState(), readAllTopics()]));
     const data = { ...appState, topics };
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename="pocket-os-backup-${new Date().toISOString().slice(0,10)}.json"`);
@@ -234,7 +367,7 @@ function getLogFilePath(date) {
 
 app.post('/api/log', async (req, res) => {
   try {
-    const entry = req.body;
+    const entry = req.body && typeof req.body === 'object' ? { ...req.body } : {};
     entry.timestamp = entry.timestamp || new Date().toISOString();
     entry.ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || '';
     const ua = entry.userAgent || '';
@@ -244,10 +377,12 @@ app.post('/api/log', async (req, res) => {
     entry.device = { browser: browser.trim(), os: os.trim(), mobile };
     const date = entry.timestamp.slice(0, 10);
     const logFile = getLogFilePath(date);
-    let logs = [];
-    try { logs = JSON.parse(await fs.readFile(logFile, 'utf-8')); } catch {}
-    logs.push(entry);
-    await atomicWrite(logFile, logs);
+    await withMutationLock(async () => {
+      let logs = [];
+      try { logs = JSON.parse(await fs.readFile(logFile, 'utf-8')); } catch {}
+      logs.push(entry);
+      await atomicWrite(logFile, logs);
+    });
     try {
       const files = await fs.readdir(LOG_DIR);
       const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
@@ -269,7 +404,8 @@ app.get('/api/logs', async (req, res) => {
     const pageSize = 50;
     let logs = [];
     try { logs = JSON.parse(await fs.readFile(getLogFilePath(date), 'utf-8')); } catch {}
-    res.json({ logs: logs.slice((page - 1) * pageSize, page * pageSize), total: logs.length, page, totalPages: Math.ceil(logs.length / pageSize) || 1, date });
+    const newestFirst = logs.slice().reverse();
+    res.json({ logs: newestFirst.slice((page - 1) * pageSize, page * pageSize), total: logs.length, page, totalPages: Math.ceil(logs.length / pageSize) || 1, date });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
@@ -283,26 +419,44 @@ async function getAllowedCanboxHosts() {
   } catch { return []; }
 }
 
-app.get('/api/canbox/proxy', async (req, res) => {
-  const targetUrl = req.query.url;
+app.post('/api/canbox/proxy', async (req, res) => {
+  const targetUrl = req.body?.url;
   if (!targetUrl) return res.status(400).json({ error: 'missing url parameter' });
   let parsed;
   try { parsed = new URL(targetUrl); } catch { return res.status(400).json({ error: 'invalid url' }); }
+  if (!['http:', 'https:'].includes(parsed.protocol)) return res.status(400).json({ error: 'only http/https are allowed' });
   const allowed = await getAllowedCanboxHosts();
   if (!allowed.includes(parsed.host)) return res.status(403).json({ error: 'target host not in allowlist', detail: `allowed: ${allowed.join(', ') || '(none)'}` });
   const headers = { 'Accept': 'application/json' };
-  if (req.query.password) headers['X-Admin-Password'] = req.query.password;
-  if (req.query.token) headers['Authorization'] = `Bearer ${req.query.token}`;
+  if (req.body?.password) headers['X-Admin-Password'] = req.body.password;
+  if (req.body?.token) headers['Authorization'] = `Bearer ${req.body.token}`;
   const appState = await readAppState();
   const allowSelfSigned = appState?.settings?.canbox?.allowSelfSigned || false;
   const transport = parsed.protocol === 'https:' ? https : http;
+  let replied = false;
   const proxyReq = transport.get(targetUrl, { headers, rejectUnauthorized: !allowSelfSigned }, proxyRes => {
     let body = '';
-    proxyRes.on('data', chunk => body += chunk);
-    proxyRes.on('end', () => res.status(proxyRes.statusCode).setHeader('Content-Type', proxyRes.headers['content-type'] || 'application/json').send(body));
+    proxyRes.on('data', chunk => {
+      body += chunk;
+      if (body.length > 10 * 1024 * 1024) proxyReq.destroy(new Error('response too large'));
+    });
+    proxyRes.on('end', () => {
+      if (replied) return;
+      replied = true;
+      res.status(proxyRes.statusCode).setHeader('Content-Type', proxyRes.headers['content-type'] || 'application/json').send(body);
+    });
   });
-  proxyReq.on('error', err => res.status(502).json({ error: 'proxy error', detail: err.message }));
-  proxyReq.setTimeout(10000, () => { proxyReq.destroy(); res.status(504).json({ error: 'timeout' }); });
+  proxyReq.on('error', err => {
+    if (replied) return;
+    replied = true;
+    res.status(502).json({ error: 'proxy error', detail: err.message });
+  });
+  proxyReq.setTimeout(10000, () => {
+    if (replied) return;
+    replied = true;
+    proxyReq.destroy();
+    res.status(504).json({ error: 'timeout' });
+  });
 });
 
 // ── 系统状态 ──
@@ -328,11 +482,14 @@ async function checkApiKey(req, res, next) {
 // 生成 API Key
 app.post('/api/settings/apikey', express.json(), async (req, res) => {
   try {
-    const appState = await readAppState();
-    if (!appState.settings) appState.settings = {};
-    const key = 'pk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    appState.settings.apiKey = key;
-    await atomicWrite(APP_STATE_FILE, appState);
+    const key = 'pk_' + crypto.randomBytes(24).toString('base64url');
+    await withMutationLock(async () => {
+      const appState = await readAppState();
+      if (!appState.settings) appState.settings = {};
+      appState.settings.apiKey = key;
+      appState.lastModified = new Date().toISOString();
+      await atomicWrite(APP_STATE_FILE, appState);
+    });
     res.json({ success: true, apiKey: key });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -350,10 +507,7 @@ app.get('/api/public/topics', checkApiKey, async (req, res) => {
     const items = sorted.slice(start, start + limit).map(t => ({
       id: t.id, title: t.title, category: t.category, platforms: t.platforms,
       publishDate: t.publishDate, completed: t.completed || false,
-      progress: (() => {
-        const active = (t.productionSteps || []).filter(s => !s.cleared);
-        return active.length ? Math.round(active.filter(s => s.done).length / active.length * 100) : 0;
-      })(),
+      progress: Workflow.stats(t).percent,
       createdAt: t.createdAt, updatedAt: t.updatedAt
     }));
     res.json({ page, limit, total: topics.length, topics: items });
@@ -381,22 +535,12 @@ app.get('/api/public/calendar', checkApiKey, async (req, res) => {
     const from = req.query.from || new Date().toISOString().slice(0, 10);
     const to = req.query.to || addDays(from, 30);
     const topics = await readAllTopics();
-    const events = [];
-    topics.filter(t => !t.completed).forEach(t => {
-      (t.productionSteps || []).filter(s => !s.cleared && s.startDate).forEach(s => {
-        if (s.endDate >= from && s.startDate <= to) {
-          events.push({ topicId: t.id, topicTitle: t.title, stepKey: s.key, stepName: s.name, startDate: s.startDate, endDate: s.endDate, done: s.done, color: s.color });
-        }
-      });
-      if (t.notes) {
-        Object.entries(t.notes).forEach(([date, text]) => {
-          if (date >= from && date <= to) {
-            events.push({ topicId: t.id, topicTitle: t.title, stepKey: 'note', stepName: '备注', startDate: date, endDate: date, done: false, color: '#FFF3CD', note: text });
-          }
-        });
-      }
-    });
-    events.sort((a, b) => a.startDate.localeCompare(b.startDate));
+    if (!require('./schedule').validDate(from) || !require('./schedule').validDate(to) || from > to) return res.status(400).json({error:'无效日期范围'});
+    const events = Workflow.events(topics, from, to).map(e => ({
+      topicId:e.topicId,topicTitle:e.title,stepKey:e.key,stepName:e.note?'备注':e.name,
+      startDate:e.start,endDate:e.end,done:e.done||false,color:e.color||'#FFF3CD',
+      ...(e.note?{note:e.name}:{rangeIndex:e.rangeIndex})
+    }));
     res.json({ from, to, events });
   } catch (err) {
     res.status(500).json({ error: err.message });

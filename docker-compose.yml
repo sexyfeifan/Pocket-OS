@@ -1,7 +1,9 @@
 services:
   pocket-os:
     image: sexyfeifan/pocket-os:latest
-    platform: linux/amd64
+    environment:
+      POCKET_OS_PASSWORD: ${POCKET_OS_PASSWORD:-}
+      POCKET_OS_VIEW_PASSWORD: ${POCKET_OS_VIEW_PASSWORD:-}
     ports:
       - "8080:8080"
     volumes:

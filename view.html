@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#FAF7F2">
+<title>Pocket OS · 只读看板</title><link rel="icon" href="/favicon.ico"><link rel="manifest" href="/view.webmanifest"><link rel="stylesheet" href="/viewer.css">
+<script defer src="/schedule.js"></script><script defer src="/workflow.js"></script><script defer src="/viewer.js"></script></head>
+<body>
+<header><div class="brand"><span class="brand-icon">P</span><div><strong>Pocket OS</strong><small>内容制作 · 全局看板</small></div><span class="badge">只读</span></div>
+<div class="header-actions"><span id="connection" role="status">正在读取…</span><button id="refresh">刷新</button><button id="fullscreen">全屏</button></div></header>
+<main>
+<div class="heading"><div><p class="eyebrow">YOUR PRODUCTION, AT A GLANCE</p><h1>把进展看清楚。</h1><p class="muted">浏览项目与排期。这里的所有操作都不会修改项目。</p></div><span id="version" class="muted"></span></div>
+<nav aria-label="看板视图"><button data-view="overview" aria-pressed="true">工作概览</button><button data-view="cards">项目卡片</button><button data-view="calendar">周 / 月日历</button><button data-view="panorama">全景时间轴</button></nav>
+<section class="filters" aria-label="搜索与筛选">
+<input id="search" type="search" placeholder="搜索项目、节点或备注" aria-label="搜索项目">
+<select id="category" aria-label="分类"><option value="">全部分类</option></select>
+<select id="phase" aria-label="项目状态"><option value="">全部项目状态</option><option value="preparation">筹备</option><option value="production">制作中</option><option value="feedback">待反馈</option><option value="completed">已完成</option></select>
+<label><input id="completed" type="checkbox">包含已完成</label><button id="reset">清除筛选</button><span id="count" class="muted"></span>
+</section>
+<section id="date-controls" class="date-controls" hidden><button id="prev" aria-label="上一个时间段">←</button><button id="today">今天</button><button id="next" aria-label="下一个时间段">→</button><strong id="date-label"></strong>
+<select id="calendar-mode" aria-label="日历范围"><option value="month">月历</option><option value="week">周历</option></select>
+<select id="zoom" aria-label="时间轴范围"><option value="42">六周全景</option><option value="14">两周细览</option></select></section>
+<div id="content" aria-live="polite"><p class="empty">正在读取项目…</p></div>
+<footer>只读看板 · 日期以工作台保存的安排为准 · 重叠节点可并行进行</footer>
+</main>
+<dialog id="detail"><div class="dialog-top"><span class="badge">仅查看</span><button id="close-detail" aria-label="关闭详情">关闭 ✕</button></div><div id="detail-content"></div></dialog>
+</body></html>

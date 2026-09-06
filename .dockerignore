@@ -1,6 +1,8 @@
 node_modules
-data/*.json
+data
 .claude
 .git
 .DS_Store
 *.md
+.env
+.env.*

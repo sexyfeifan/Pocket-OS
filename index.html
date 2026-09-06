@@ -79,11 +79,16 @@
     .todo-input:focus { box-shadow: none; }
     .wf-row { transition: background 0.15s; }
     .wf-row:hover { background: #FAF7F2; }
-    .wf-row.cleared { opacity: 0.45; }
+    .editor-button { font-size: 12px; border: 1px solid #D5D0C6; border-radius: 7px; padding: 6px 10px; background: white; min-height: 32px; }
+    .editor-button:hover { background: #FAF7F2; }
+    .editor-button:disabled { opacity: .35; cursor: default; }
+    .date-label { display: block; font-size: 11px; color: #827368; }
+    .date-input { display: block; margin-top: 3px; min-height: 36px; width: 145px; max-width: 100%; color: #4A3C31; font-size: 13px; border: 1px solid #E8E4DC; border-radius: 7px; padding: 6px 8px; background: #FAF7F2; }
+    .wf-row.cleared { opacity: 1; }
     .wf-row.cleared:hover { opacity: 0.7; }
     .wf-row[draggable="true"] { cursor: grab; }
     .wf-row[draggable="true"]:active { cursor: grabbing; }
-    .step-popup { position: absolute; z-index: 30; }
+    .step-popup { position: fixed; z-index: 40; max-height: 70vh; overflow-y: auto; }
     .date-cell { cursor: pointer; }
     .date-cell:hover { background: rgba(179,125,86,0.06); }
     .time-meta { font-size: 10px; color: #A3968C; }
@@ -106,6 +111,8 @@
     /* 移动端侧边栏 */
     #sidebar { transition: transform 0.3s ease; }
     @media (max-width: 768px) {
+      .date-input { width: 126px; min-height: 40px; }
+      #back-to-calendar { margin-left: 40px; min-height: 30px; }
       #sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 100; transform: translateX(-100%); }
       #sidebar.open { transform: translateX(0); }
       #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 99; }
@@ -113,6 +120,7 @@
       main { margin-left: 0 !important; }
     }
   </style>
+<link rel="stylesheet" href="/workbench.css">
 </head>
 <body class="min-h-screen flex">
 
@@ -144,7 +152,8 @@
       </button>
     </div>
     <div class="p-3">
-      <button onclick="createTopic()" class="w-full py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors flex items-center justify-center gap-1.5">
+      <select id="new-project-template" aria-label="新项目模板" class="w-full mb-2 text-xs border border-beige-200 rounded-lg px-2 py-2"><option value="">标准工序</option></select>
+      <button onclick="createTopic(document.getElementById('new-project-template').value)" class="w-full py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors flex items-center justify-center gap-1.5">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
         新建选题
       </button>
@@ -169,6 +178,9 @@
       </button>
       <input type="file" id="import-file" accept=".json" class="file-input-hidden" onchange="importData(event)">
     </div>
+    <button data-save-status onclick="flushSave()" class="px-3 py-2 text-xs text-sage-text" aria-live="polite">已保存</button>
+    <a href="/view" target="_blank" rel="noopener" class="block px-3 py-2 text-sm text-brand">打开只读看板 ↗</a>
+    <p id="viewer-access-note" class="px-3 pb-2 text-xs text-coffee-light"></p>
     <div id="system-info" class="px-3 py-2 border-t border-beige-200 text-xs text-coffee-light space-y-0.5"></div>
     <div class="px-3 pb-3 border-t border-beige-200">
       <button onclick="openLogViewer()" class="w-full py-1.5 text-xs text-coffee-light hover:text-coffee border border-beige-300 rounded-lg hover:bg-beige-200 transition-colors flex items-center justify-center gap-1">
@@ -179,7 +191,12 @@
   </aside>
 
   <!-- 主内容区 -->
-  <main class="flex-1 min-h-screen overflow-auto">
+  <main id="workspace-main" class="flex-1 min-h-screen overflow-auto">
+    <div id="workflow-toolbar" class="workflow-toolbar">
+      <input id="workbench-search" aria-label="搜索工作台项目" type="search" placeholder="搜索项目或工序" oninput="setWorkbenchFilter()">
+      <select id="workbench-phase" aria-label="筛选项目状态" onchange="setWorkbenchFilter()"><option value="">全部状态</option><option value="preparation">筹备</option><option value="production">制作中</option><option value="feedback">待反馈</option><option value="completed">已完成</option></select>
+      <label><input id="workbench-completed" type="checkbox" onchange="setWorkbenchFilter()"> 包含已完成</label>
+    </div><div id="workflow-overview" class="workflow-overview"></div>
     <!-- 甘特图日历 -->
     <div id="view-calendar" class="hidden">
       <div class="p-4">
@@ -219,18 +236,17 @@
     <!-- 单选题编辑页 -->
     <div id="view-edit" class="hidden">
       <div class="p-4">
-        <button onclick="exitEdit()" class="flex items-center gap-1.5 text-sm text-coffee-light hover:text-coffee mb-3 transition-colors">
+        <button id="back-to-calendar" onclick="exitEdit()" class="flex items-center gap-1.5 text-sm text-coffee-light hover:text-coffee mb-3 transition-colors">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
           返回日历
         </button>
-        <!-- 编辑页内嵌日历（小） -->
-        <div id="edit-gantt-wrapper" class="gantt-scroll bg-white rounded-xl shadow-sm border border-beige-200 mb-4">
-          <div id="edit-gantt-container"></div>
+        <div id="edit-card-content" class="max-w-3xl mx-auto"></div>
+        <div class="max-w-3xl mx-auto mt-6">
+          <h3 class="text-sm font-semibold mb-2">项目时间轴</h3>
+          <div id="edit-gantt-wrapper" class="gantt-scroll bg-white rounded-xl shadow-sm border border-beige-200 mb-4"><div id="edit-gantt-container"></div></div>
         </div>
-        <!-- 编辑卡片 -->
-        <div id="edit-card-content" class="max-w-2xl mx-auto"></div>
         <!-- 项目通告单日历 -->
-        <div id="project-calendar-section" class="max-w-2xl mx-auto mt-6">
+        <div id="project-calendar-section" class="max-w-3xl mx-auto mt-6">
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center gap-2">
               <button onclick="projectCalPrev()" class="p-1 rounded hover:bg-beige-100 transition-colors">
@@ -271,7 +287,7 @@
         </button>
       </div>
       <div class="flex-1 overflow-y-auto px-6 py-4">
-        <p class="text-xs text-coffee-light mb-4">自定义标准制作流程。修改后新建选题将使用新工序。</p>
+        <p class="text-xs text-coffee-light mb-4">设置新项目的工序名称、颜色与顺序。新项目日期留空，已有项目保持原样。</p>
         <div id="settings-steps-list" class="space-y-2 mb-4"></div>
         <div class="flex items-center gap-3 mb-4">
           <button onclick="settingsAddStep()" class="text-sm text-brand hover:text-brand-dark flex items-center gap-1.5">
@@ -283,9 +299,7 @@
             恢复默认工序
           </button>
         </div>
-        <div class="border-t border-beige-200 pt-4">
-          <button onclick="settingsRescheduleAll()" class="text-xs text-brand border border-brand rounded-lg px-3 py-1.5 hover:bg-brand hover:text-white transition-colors">用当前设置重新倒排所有选题</button>
-        </div>
+
         <div class="border-t border-beige-200 pt-4 mt-4">
           <h4 class="text-sm font-semibold text-coffee mb-2">开放 API</h4>
           <p class="text-xs text-coffee-light mb-2">生成 API Key 后，外部程序可通过只读 API 访问项目数据。</p>
@@ -351,7 +365,7 @@
           <div id="canbox-project-list" class="space-y-2 mb-4 max-h-[300px] overflow-y-auto"></div>
           <div class="flex items-center gap-3">
             <button onclick="importCanboxSelected()" class="px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark transition-colors font-medium">导入选中项目</button>
-            <button id="canbox-bind-btn" onclick="bindCanboxSelected()" class="px-4 py-2 bg-sage-bg text-sage-text text-sm rounded-lg hover:opacity-80 transition-colors font-medium hidden">绑定到当前选题</button>
+            <button id="canbox-bind-btn" onclick="previewCanboxBinding()" class="px-4 py-2 bg-sage-bg text-sage-text text-sm rounded-lg hover:opacity-80 transition-colors font-medium hidden">绑定到当前选题</button>
             <span id="canbox-import-status" class="text-xs text-coffee-light"></span>
           </div>
         </div>
@@ -424,9 +438,13 @@
         </button>
       </div>
       <div class="flex-1 overflow-y-auto p-5">
+        <label class="block text-xs text-coffee-light mb-3">排期年份
+          <input type="number" id="tml-year" min="2000" max="2200" class="border border-beige-200 rounded px-2 py-1 ml-2 w-24">
+        </label>
+        <p class="text-xs text-coffee-light mb-3">只更新文本中列出的工序，其他排期保持原样。应用前请核对年份与日期预览。</p>
         <textarea id="tml-input" rows="8" class="w-full text-sm border border-beige-200 rounded-lg p-3 bg-beige-50 text-coffee resize-none font-mono" placeholder="粘贴 TML 排期文本...&#10;&#10;示例：&#10;脚本 7.20&#10;拍摄 7.23-30&#10;ACO 8.13&#10;BCO 8.17&#10;发布 8.18"></textarea>
         <div class="flex gap-2 mt-3">
-          <button onclick="parseTml()" class="px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark transition-colors">解析并应用</button>
+          <button onclick="parseTml()" class="px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark transition-colors">预览排期</button>
           <button onclick="recordTml()" class="px-4 py-2 border border-beige-300 text-coffee text-sm rounded-lg hover:bg-beige-100 transition-colors">仅记录</button>
         </div>
         <div id="tml-preview" class="mt-4 hidden"></div>
@@ -434,6 +452,9 @@
     </div>
   </div>
 
+  <script src="/schedule.js"></script>
+  <script src="/workflow.js"></script>
+  <script src="/workbench.js"></script>
   <script>
   const CATEGORIES = ['内容', '广告'];
   const PLATFORMS = ['哔哩哔哩', '抖音', '小红书', '视频号', '微信', '微博'];
@@ -461,7 +482,7 @@
   function addDays(dateStr, n) { const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() + n); return fmtDate(d); }
   function daysBetween(a, b) { return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000); }
   function todayStr() { return fmtDate(new Date()); }
-  function escapeHtml(str) { const div = document.createElement('div'); div.textContent = str || ''; return div.innerHTML; }
+  function escapeHtml(str) { const div = document.createElement('div'); div.textContent = str || ''; return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
   function shortDate(dateStr) { if (!dateStr) return '—'; const p = dateStr.split('-'); return parseInt(p[1]) + '/' + parseInt(p[2]); }
   function nowISO() { return new Date().toISOString(); }
   function shortTime(iso) { if (!iso) return ''; const d = new Date(iso); return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
@@ -487,7 +508,7 @@
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.innerHTML = message;
+    toast.textContent = message;
     container.appendChild(toast);
     setTimeout(() => { toast.style.animation = 'toastOut 0.3s ease forwards'; setTimeout(() => toast.remove(), 300); }, duration);
   }
@@ -495,7 +516,8 @@
   // ── 多段拍摄检测 (R07) ──
   function detectShootSegments(dates) {
     if (!dates || !dates.length) return [];
-    const sorted = [...dates].sort();
+    const sorted = [...new Set(dates)].filter(PocketSchedule.validDate).sort();
+    if (!sorted.length) return [];
     const segments = [];
     let segStart = sorted[0], segEnd = sorted[0];
     for (let i = 1; i < sorted.length; i++) {
@@ -509,6 +531,33 @@
   function formatSegments(segments) {
     if (!segments || segments.length <= 1) return null;
     return segments.map(s => s.start === s.end ? shortDate(s.start) : `${shortDate(s.start)}~${shortDate(s.end)}`).join(', ');
+  }
+
+  function getStepRanges(step) { return PocketSchedule.ranges(step);
+  }
+
+  function calculateStepDuration(step) { return PocketSchedule.duration(step);
+  }
+
+
+
+  function shiftStepDates(step, days) {
+    PocketSchedule.move(step, PocketSchedule.addDays(step.startDate, days));
+  }
+
+  function syncPublishFromStep(topic) { PocketSchedule.syncPublish(topic);
+  }
+
+  function setPublishDate(topic, date) {
+    if (date && !PocketSchedule.validDate(date)) throw new Error('请选择有效日期');
+    let publish = (topic.productionSteps || []).find(s => s.key === 'publish');
+    if (!publish && date) {
+      const def = getStepDefs().find(d => d.key === 'publish') || { key: 'publish', name: '发布', color: '#B37D56' };
+      publish = PocketSchedule.blankSteps([def])[0];
+      (topic.productionSteps ||= []).push(publish);
+    }
+    if (publish) PocketSchedule.updateDate(publish, 'startDate', date);
+    syncPublishFromStep(topic);
   }
 
   // ── 操作日志 (R04) ──
@@ -532,58 +581,12 @@
     try { await fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry) }); } catch {}
   }
 
-  function reverseSchedule(publishDate, stepDefs) {
-    const defs = stepDefs || getStepDefs();
-    // 顺序倒排：从发布日往前，每道工序紧挨前一道，不重叠
-    const steps = [];
-    let cursor = publishDate;
-    for (let i = defs.length - 1; i >= 0; i--) {
-      const def = defs[i];
-      const dur = Math.max(0, Math.ceil(def.duration) - 1);
-      const end = cursor;
-      const start = def.duration === 0 ? end : addDays(end, -dur);
-      steps.unshift({ key: def.key, name: def.name, startDate: start, endDate: end, duration: def.duration, color: def.color, done: false });
-      cursor = addDays(start, -1);
-    }
-    return steps;
-  }
-
-  // 双锚点倒排：以拍摄段 + 发布日为固定锚点，前后工序分别倒推/顺推
-  function anchorSchedule(shootStart, shootEnd, publishDate, stepDefs) {
-    const defs = stepDefs || getStepDefs();
-    const shootIdx = defs.findIndex(d => d.key === 'shoot');
-    if (shootIdx < 0) return reverseSchedule(publishDate, defs);
-
-    const steps = [];
-
-    // 拍摄前的工序：从 shootStart 往前倒推
-    let cursor = shootStart;
-    for (let i = shootIdx - 1; i >= 0; i--) {
-      const def = defs[i];
-      const dur = def.duration;
-      const end = addDays(cursor, -1);
-      const daySpan = Math.max(0, Math.ceil(dur) - 1);
-      const start = addDays(end, -daySpan);
-      steps.unshift({ key: def.key, name: def.name, startDate: start, endDate: end, duration: dur, color: def.color, done: false });
-      cursor = start;
-    }
-
-    // 拍摄工序：使用实际时间段
-    const shootDef = defs[shootIdx];
-    steps.push({ key: shootDef.key, name: shootDef.name, startDate: shootStart, endDate: shootEnd, duration: daysBetween(shootStart, shootEnd) + 1, color: shootDef.color, done: false });
-
-    // 拍摄后的工序：从 shootEnd 次日开始顺推
-    const postDefs = defs.slice(shootIdx + 1);
-    let c = shootEnd;
-    postDefs.forEach(def => {
-      const dur = def.duration;
-      const start = addDays(c, 1);
-      const daySpan = Math.max(0, Math.ceil(dur) - 1);
-      const end = dur === 0 ? start : addDays(start, daySpan);
-      steps.push({ key: def.key, name: def.name, startDate: start, endDate: end, duration: dur, color: def.color, done: false });
-      c = end;
-    });
-
+  // 通告仅填写真实拍摄日期，其余节点保持未安排。
+  function stepsFromCanbox(shootSegments) {
+    const steps = PocketSchedule.blankSteps(getStepDefs());
+    let shoot = steps.find(s => s.key === 'shoot');
+    if (!shoot) { shoot = PocketSchedule.blankSteps([{ key: 'shoot', name: '拍摄', color: '#A5C8E1' }])[0]; steps.push(shoot); }
+    if (shootSegments.length) PocketSchedule.setRanges(shoot, shootSegments);
     return steps;
   }
 
@@ -613,13 +616,7 @@
     return active.length > 0 && active.every(s => s.done);
   }
 
-  function autoUncomplete(topic) {
-    if (topic.completed) {
-      topic.completed = false;
-      delete topic.completedAt;
-      showToast(`「${escapeHtml(topic.title)}」已自动撤回完成状态`, 'info');
-    }
-  }
+
 
   function completeProject(id) {
     const t = appState.topics.find(t => t.id === id);
@@ -628,7 +625,7 @@
     t.completedAt = nowISO();
     t.updatedAt = nowISO();
     markDirty(id); saveData(); logAction('topic.complete', id); renderAll();
-    showToast(`「${escapeHtml(t.title)}」已标记完成`, 'success');
+    showToast(`「${t.title}」已标记完成`, 'success');
   }
 
   function uncompleteProject(id) {
@@ -638,52 +635,121 @@
     delete t.completedAt;
     t.updatedAt = nowISO();
     markDirty(id); saveData(); logAction('topic.uncomplete', id); renderAll();
-    showToast(`「${escapeHtml(t.title)}」已撤回完成`, 'info');
+    showToast(`「${t.title}」已撤回完成`, 'info');
   }
 
   // 延期工序
   function delayStep(id, idx, days) {
-    const t = appState.topics.find(t => t.id === id);
-    if (!t || !t.productionSteps[idx]) return;
-    const step = t.productionSteps[idx];
-    step.endDate = addDays(step.endDate, days || 1);
-    step.duration = daysBetween(step.startDate, step.endDate) + 1;
-    step.delayed = true;
-    markUpdated(t); saveData(); renderAll();
-    // 提示后续工序
-    const defs = getStepDefs();
-    const stepIdx = defs.findIndex(d => d.key === step.key);
-    const nextSteps = [];
-    for (let i = stepIdx + 1; i < defs.length; i++) {
-      const ns = t.productionSteps.find(s => s.key === defs[i].key);
-      if (ns && !ns.cleared && !ns.done) nextSteps.push(ns.name);
-    }
-    if (nextSteps.length) {
-      showToast(`「${step.name}」已延期${days || 1}天。后续工序「${nextSteps.join('」「')}」的排期可能需要手动调整。`, 'warn', 6000);
-    }
+    const topic = appState.topics.find(t => t.id === id), step = topic?.productionSteps[idx];
+    if (!step || !getStepRanges(step).length) return;
+    changeSchedule(topic, () => shiftStepDates(step, days || 1), { step: step.name, action: 'move', days: days || 1 });
   }
 
   function sortedTopics() {
-    return [...appState.topics].sort((a, b) => (a.publishDate || 'z').localeCompare(b.publishDate || 'z'));
+    return [...filteredWorkbenchTopics()].sort((a, b) => (a.publishDate || 'z').localeCompare(b.publishDate || 'z'));
   }
-  function activeTopics() { return sortedTopics().filter(t => !t.completed); }
+  function activeTopics() { return sortedTopics().filter(t => !t.completed || workbenchFilter.completed || workbenchFilter.lifecycle === 'completed'); }
   function completedTopics() { return sortedTopics().filter(t => t.completed); }
 
-  function sortStepsByDefaultOrder(steps) {
-    const defs = getStepDefs();
-    const orderMap = {};
-    defs.forEach((d, i) => orderMap[d.key] = i);
-    steps.sort((a, b) => {
-      const ia = orderMap[a.key] !== undefined ? orderMap[a.key] : 999;
-      const ib = orderMap[b.key] !== undefined ? orderMap[b.key] : 999;
-      return ia - ib;
-    });
-  }
+
 
   function calcProgress(t) {
-    const active = getActiveSteps(t);
-    if (!active.length) return 0;
-    return Math.round(active.filter(s => s.done).length / active.length * 100);
+    return PocketWorkflow.stats(t).percent;
+  }
+
+  function normalizeLoadedTopic(topic) {
+    // 阅读旧项目不会恢复已删除节点、重排顺序或用通告覆盖手动日期。
+    if (!Array.isArray(topic.productionSteps)) topic.productionSteps = [];
+    if (!Array.isArray(topic.preparationTasks)) topic.preparationTasks = [];
+    topic.productionSteps.forEach(step => {
+      if (getStepRanges(step).length) step.duration = calculateStepDuration(step);
+    });
+    const publish = topic.productionSteps.find(s => s.key === 'publish');
+    if (publish) syncPublishFromStep(topic);
+    else if (topic.publishDate && !publish && PocketSchedule.validDate(topic.publishDate)) setPublishDate(topic, topic.publishDate);
+  }
+
+  const scheduleHistory = new Map();
+  function scheduleSnapshot(topic) { return JSON.parse(JSON.stringify({ productionSteps: topic.productionSteps, publishDate: topic.publishDate || '' })); }
+  function rememberSchedule(topic, snapshot = scheduleSnapshot(topic)) {
+    const history = scheduleHistory.get(topic.id) || [];
+    history.push(snapshot); if (history.length > 30) history.shift();
+    scheduleHistory.set(topic.id, history);
+  }
+  function changeSchedule(topic, change, detail, renderCard = true) {
+    const before = scheduleSnapshot(topic);
+    try { change(); syncPublishFromStep(topic); }
+    catch (error) { Object.assign(topic, before); showToast(error.message, 'warn'); refreshScheduleViews(); return false; }
+    if (JSON.stringify(before) !== JSON.stringify(scheduleSnapshot(topic))) {
+      rememberSchedule(topic, before);
+      if (PocketWorkflow.diff(PocketWorkflow.snapshot(before), PocketWorkflow.snapshot(topic)).length) topic.scheduleConfirmed = false;
+      markUpdated(topic); saveData(); logAction('step.update', topic.id, detail);
+    }
+    if (renderCard) renderAll(); else refreshScheduleViews();
+    return true;
+  }
+  function undoSchedule(id) {
+    const topic = appState.topics.find(t => t.id === id);
+    const previous = scheduleHistory.get(id)?.pop();
+    if (!topic || !previous) return;
+    previous.productionSteps.forEach(step => {
+      const current = topic.productionSteps.find(s => s.key === step.key);
+      if (current) { step.done = current.done; step.name = current.name; step.color = current.color; }
+    });
+    Object.assign(topic, previous); topic.scheduleConfirmed = false; markUpdated(topic); saveData();
+    logAction('step.update', id, { action: 'undo' }); renderAll();
+  }
+  function moveStepOrder(id, index, direction) {
+    const topic = appState.topics.find(t => t.id === id), next = index + direction;
+    if (!topic || next < 0 || next >= topic.productionSteps.length) return;
+    changeSchedule(topic, () => {
+      const [moved] = topic.productionSteps.splice(index, 1);
+      topic.productionSteps.splice(next, 0, moved);
+    }, { action: 'reorder', from: index, to: next });
+  }
+  function addShootSegment(id, index) {
+    const topic = appState.topics.find(t => t.id === id), step = topic?.productionSteps[index];
+    const input = document.getElementById('new-segment-' + index), date = input?.value;
+    if (!step || !date) { input?.focus(); return; }
+    if (changeSchedule(topic, () => PocketSchedule.setRanges(step, [...getStepRanges(step), { start: date, end: date }]), { action: 'add-segment' })) {
+      const field = document.getElementById('new-segment-' + index); if (field) field.value = '';
+    }
+  }
+  function deleteShootSegment(id, index, rangeIndex) {
+    const topic = appState.topics.find(t => t.id === id), step = topic?.productionSteps[index]; if (!step) return;
+    changeSchedule(topic, () => PocketSchedule.setRanges(step, getStepRanges(step).filter((_, i) => i !== rangeIndex)), { action: 'delete-segment' });
+  }
+  function refreshScheduleViews() {
+    renderTopicList();
+    if (ganttStartDate) {
+      const dates = getGanttDates();
+      renderGanttTable('gantt-container', dates, activeTopics(), true, true);
+      const topic = appState.topics.find(t => t.id === selectedTopicId);
+      if (currentView === 'edit' && topic) {
+        renderGanttTable('edit-gantt-container', dates, [topic], false, true);
+        renderProjectCalendar();
+        document.querySelectorAll('#edit-card-content [data-schedule-date]').forEach(input => {
+          const step = topic.productionSteps[Number(input.dataset.step)];
+          const range = getStepRanges(step)[Number(input.dataset.range || 0)];
+          input.value = input.dataset.field === 'publishDate' ? topic.publishDate || ''
+            : range?.[input.dataset.field] || '';
+        });
+        topic.productionSteps.forEach((step, i) => {
+          const label = document.getElementById('step-duration-' + i);
+          if (label) label.textContent = getStepRanges(step).length ? calculateStepDuration(step) + '天' : '未安排';
+          const row = document.getElementById('step-row-' + i);
+          if (row) {
+            row.querySelectorAll('[data-needs-date]').forEach(button => { button.disabled = !getStepRanges(step).length; });
+          }
+        });
+        const undo = document.getElementById('undo-schedule');
+        if (undo) undo.disabled = !scheduleHistory.get(topic.id)?.length;
+        const progress = document.getElementById('edit-progress');
+        if (progress) progress.textContent = PocketWorkflow.progressText(topic);
+        refreshWorkflowStatus(topic);
+      }
+    }
+    updateSaveStatus();
   }
 
   // ── 数据持久化 ──
@@ -698,96 +764,151 @@
     }
     if (!appState.settings) appState.settings = {};
     if (!appState.settings.stepDefs?.length) appState.settings.stepDefs = JSON.parse(JSON.stringify(DEFAULT_STEP_DEFS));
+    if (!Array.isArray(appState.topics)) appState.topics = [];
     appState.topics.forEach(t => {
       if (!t.category) t.category = '内容';
       if (!t.projectStatus) t.projectStatus = 'normal';
       if (!t.createdAt) t.createdAt = appState.lastModified || nowISO();
       if (!t.updatedAt) t.updatedAt = appState.lastModified || nowISO();
-      // 补齐被删除的默认工序（cleared 状态）
-      const defs = appState.settings.stepDefs || DEFAULT_STEP_DEFS;
-      const existingKeys = (t.productionSteps || []).map(s => s.key);
-      defs.forEach(def => {
-        if (!existingKeys.includes(def.key)) {
-          t.productionSteps.push({ key: def.key, name: def.name, startDate: '', endDate: '', duration: def.duration, color: def.color, done: false, cleared: true });
-        }
-      });
-      sortStepsByDefaultOrder(t.productionSteps);
+      normalizeLoadedTopic(t);
     });
+    try {
+      const pending = JSON.parse(localStorage.getItem('pocket_os_pending') || '{}');
+      for (const draft of pending.topics || []) {
+        const index = appState.topics.findIndex(t => t.id === draft.id);
+        const server = appState.topics[index];
+        if (server && server._version !== draft._version) _topicConflicts.set(draft.id, { serverTopic: server, serverVersion: server._version });
+        else if (!server && draft._version) _topicConflicts.set(draft.id, { serverTopic: null, serverVersion: 0 });
+        else markDirty(draft.id);
+        if (index >= 0) appState.topics[index] = draft; else appState.topics.push(draft);
+      }
+      if (pending.settings) { appState.settings = pending.settings; _settingsDirty = true; }
+      if (_dirtyTopics.size || _settingsDirty) saveData();
+    } catch {}
     renderAll();
     loadSystemInfo();
     initMobile();
   }
 
-  function markUpdated(topic) { topic.updatedAt = nowISO(); autoUncomplete(topic); markDirty(topic.id); }
+  function markUpdated(topic) { topic.updatedAt = nowISO(); markDirty(topic.id); }
 
   // ── 多点同步：按选题分别保存 ──
   let _dirtyTopics = new Set();
   let _settingsDirty = false;
-  let saveAbort = null;
+  let savingPromise = null;
+  let _savingTopics = new Set();
+  let _topicConflicts = new Map();
 
-  function markDirty(topicId) { _dirtyTopics.add(topicId); }
+  function markDirty(topicId) { _dirtyTopics.add(topicId); updateSaveStatus(); }
   function markSettingsDirty() { _settingsDirty = true; }
 
+  function updateSaveStatus() {
+    const pending = _dirtyTopics.size || _settingsDirty;
+    const status = _topicConflicts.size ? '同步冲突：请选择版本' : _savingTopics.size || savingPromise ? '保存中…' : pending ? '等待保存，可点击重试' : '已保存';
+    document.querySelectorAll('[data-save-status]').forEach(el => { el.textContent = status; });
+  }
+  function persistLocalDraft() {
+    try {
+      localStorage.setItem('pocket_os_backup', JSON.stringify(appState));
+      const ids = new Set([..._dirtyTopics, ..._savingTopics, ..._topicConflicts.keys()]);
+      localStorage.setItem('pocket_os_pending', JSON.stringify({
+        topics: appState.topics.filter(t => ids.has(t.id)),
+        settings: _settingsDirty ? appState.settings : null
+      }));
+    } catch {}
+  }
   function saveData(dirtyTopicId) {
     if (dirtyTopicId) markDirty(dirtyTopicId);
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(flushSave, 300);
+    persistLocalDraft(); updateSaveStatus();
+    clearTimeout(saveTimer); saveTimer = setTimeout(flushSave, 300);
   }
-
   async function flushSave() {
+    if (savingPromise) return savingPromise;
+    clearTimeout(saveTimer);
+    savingPromise = saveBatch();
+    updateSaveStatus();
+    try { await savingPromise; }
+    finally {
+      savingPromise = null; persistLocalDraft(); updateSaveStatus();
+      if (_settingsDirty || _dirtyTopics.size) {
+        clearTimeout(saveTimer); saveTimer = setTimeout(flushSave, 1500);
+      }
+    }
+  }
+  async function saveBatch() {
     appState.lastModified = nowISO();
-    try { localStorage.setItem('pocket_os_backup', JSON.stringify(appState)); } catch {}
-
-    if (saveAbort) saveAbort.abort();
-    saveAbort = new AbortController();
-    const signal = saveAbort.signal;
-
-    // 保存设置（失败时保留脏标记，稍后自动重试）
     if (_settingsDirty) {
       _settingsDirty = false;
       try {
-        await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(appState.settings), signal });
-      } catch (e) {
-        _settingsDirty = true;
-      }
+        const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(appState.settings) });
+        if (!res.ok) throw new Error('保存设置失败');
+      } catch { _settingsDirty = true; }
     }
-
-    // 只保存脏选题
-    const dirtyIds = new Set(_dirtyTopics);
-    _dirtyTopics.clear();
-    for (const topic of appState.topics) {
-      if (!dirtyIds.has(topic.id) && !dirtyIds.has('*')) continue;
+    const dirtyIds = [..._dirtyTopics];
+    for (const id of dirtyIds) {
+      const topic = appState.topics.find(t => t.id === id);
+      _dirtyTopics.delete(id);
+      if (!topic || _topicConflicts.has(id)) continue;
+      _savingTopics.add(id); updateSaveStatus();
       try {
-        const res = await fetch(`/api/topic/${topic.id}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(topic), signal
+        const res = await fetch('/api/topic/' + id, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(topic)
         });
         if (res.status === 409) {
           const data = await res.json();
-          topic._version = data.serverVersion;
-          const retry = await fetch(`/api/topic/${topic.id}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(topic), signal
-          });
-          if (retry.ok) { const rd = await retry.json(); topic._version = rd._version; }
-          else _dirtyTopics.add(topic.id);
+          _topicConflicts.set(id, { serverTopic: data.serverTopic, serverVersion: data.serverVersion });
+          showToast('“' + topic.title + '”有其他设备的修改，请选择保留的版本', 'warn', 7000);
+          if (currentView === 'edit' && selectedTopicId === id) renderEditPage();
         } else if (res.ok) {
           const data = await res.json();
           topic._version = data._version;
-        } else {
-          _dirtyTopics.add(topic.id);
-        }
-      } catch (e) {
-        // 网络错误 / 中断：重新标记脏，确保改动不丢失
-        _dirtyTopics.add(topic.id);
-      }
+          if (Array.isArray(data.scheduleHistory)) topic.scheduleHistory = data.scheduleHistory;
+          if (!_dirtyTopics.has(id) && 'scheduleConfirmed' in data) topic.scheduleConfirmed = !!data.scheduleConfirmed;
+          if (currentView === 'edit' && selectedTopicId === id) {
+            const historyPanel = document.getElementById('history-container');
+            if (historyPanel && !historyPanel.contains(document.activeElement)) {
+              const wasOpen = document.getElementById('workflow-history')?.open;
+              const templateDraft = document.getElementById('template-name')?.value || '';
+              historyPanel.innerHTML = workflowHistoryHtml(topic);
+              if (wasOpen) document.getElementById('workflow-history').open = true;
+              document.getElementById('template-name').value = templateDraft;
+            }
+            refreshWorkflowStatus(topic);
+          }
+          if (!_dirtyTopics.has(id) && data.updatedAt) topic.updatedAt = data.updatedAt;
+        } else { _dirtyTopics.add(id); }
+      } catch { _dirtyTopics.add(id); }
+      finally { _savingTopics.delete(id); }
     }
+  }
 
-    // 若仍有未保存的改动（失败 / 中断 / 冲突），自动安排重试
-    if (_settingsDirty || _dirtyTopics.size > 0) {
-      clearTimeout(saveTimer);
-      saveTimer = setTimeout(flushSave, 3000);
+  function resolveConflictUseServer(topicId) {
+    const conflict = _topicConflicts.get(topicId);
+    if (!conflict) return;
+    const idx = appState.topics.findIndex(t => t.id === topicId);
+    if (idx >= 0) {
+      if (conflict.serverTopic) appState.topics[idx] = conflict.serverTopic;
+      else appState.topics.splice(idx, 1);
     }
+    scheduleHistory.delete(topicId);
+    _topicConflicts.delete(topicId);
+    _dirtyTopics.delete(topicId);
+    persistLocalDraft();
+    try { localStorage.setItem('pocket_os_backup', JSON.stringify(appState)); } catch {}
+    renderAll();
+    showToast('已采用服务器版本', 'success');
+  }
+
+  function resolveConflictOverwrite(topicId) {
+    const conflict = _topicConflicts.get(topicId);
+    const topic = appState.topics.find(t => t.id === topicId);
+    if (!conflict || !topic) return;
+    if (!confirm('确定用当前页面的内容覆盖服务器版本？此操作会丢弃另一台设备对该选题的修改。')) return;
+    topic._version = conflict.serverVersion;
+    _topicConflicts.delete(topicId);
+    markDirty(topicId);
+    saveData();
+    renderAll();
   }
 
   // ── SSE 实时同步 ──
@@ -796,44 +917,60 @@
     if (_sseSource) { _sseSource.close(); _sseSource = null; }
     try {
       _sseSource = new EventSource('/api/events');
+      _sseSource.onopen = () => { _sseRetryCount = 0; };
       _sseSource.addEventListener('topic-update', (e) => {
         const data = JSON.parse(e.data);
-        // 如果当前正在编辑该选题，不覆盖
-        if (currentView === 'edit' && selectedTopicId === data.id) return;
+        if (_savingTopics.has(data.id)) return;
         // 拉取该选题最新数据
         fetch(`/api/data`).then(r => r.json()).then(latest => {
           const serverTopic = latest.topics?.find(t => t.id === data.id);
           if (serverTopic) {
             const idx = appState.topics.findIndex(t => t.id === data.id);
-            if (idx >= 0) { Object.assign(appState.topics[idx], serverTopic); }
+            const hasLocalWork = _dirtyTopics.has(data.id) || _savingTopics.has(data.id) || _topicConflicts.has(data.id);
+            if (_savingTopics.has(data.id)) return;
+            if (idx >= 0 && serverTopic._version <= (appState.topics[idx]._version || 0)) return;
+            if (idx >= 0 && hasLocalWork && serverTopic._version > (appState.topics[idx]._version || 0)) {
+              _topicConflicts.set(data.id, { serverTopic, serverVersion: serverTopic._version });
+              showToast(`「${appState.topics[idx].title}」已在其他设备更新`, 'warn', 7000);
+            } else if (idx >= 0) { Object.assign(appState.topics[idx], serverTopic); }
             else { appState.topics.push(serverTopic); }
+            if (!hasLocalWork) scheduleHistory.delete(data.id);
             renderAll();
           }
         }).catch(() => {});
       });
       _sseSource.addEventListener('topic-delete', (e) => {
         const data = JSON.parse(e.data);
+        if (_dirtyTopics.has(data.id) || _savingTopics.has(data.id) || _topicConflicts.has(data.id)) {
+          _topicConflicts.set(data.id, { serverTopic: null, serverVersion: 0 });
+          _dirtyTopics.delete(data.id); persistLocalDraft(); renderAll(); return;
+        }
         appState.topics = appState.topics.filter(t => t.id !== data.id);
+        scheduleHistory.delete(data.id);
         if (selectedTopicId === data.id) { selectedTopicId = appState.topics[0]?.id || null; if (currentView === 'edit') switchView('calendar'); }
         renderAll();
       });
       _sseSource.addEventListener('settings-update', () => {
         fetch('/api/data').then(r => r.json()).then(latest => {
-          if (latest.settings) { appState.settings = latest.settings; renderAll(); }
+          if (latest.settings && !_settingsDirty) { appState.settings = latest.settings; updateSaveStatus(); }
         }).catch(() => {});
       });
       _sseSource.addEventListener('full-sync', () => {
-        // 全量同步：拉取最新数据，只更新非编辑中的选题
+        // 恢复也不能悄悄覆盖本地尚未保存的项目。
         fetch('/api/data').then(r => r.json()).then(latest => {
           if (latest.topics) {
-            latest.topics.forEach(serverTopic => {
-              if (currentView === 'edit' && selectedTopicId === serverTopic.id) return;
-              const idx = appState.topics.findIndex(t => t.id === serverTopic.id);
-              if (idx >= 0) Object.assign(appState.topics[idx], serverTopic);
-              else appState.topics.push(serverTopic);
-            });
+            for (const local of appState.topics) {
+              const server = latest.topics.find(t => t.id === local.id);
+              if (_dirtyTopics.has(local.id) || _savingTopics.has(local.id) || _topicConflicts.has(local.id)) {
+                _topicConflicts.set(local.id, { serverTopic: server || null, serverVersion: server?._version || 0 });
+                latest.topics = latest.topics.filter(t => t.id !== local.id);
+                latest.topics.push(local);
+              } else scheduleHistory.delete(local.id);
+            }
+            appState.topics = latest.topics;
           }
-          if (latest.settings) appState.settings = latest.settings;
+          if (latest.settings && !_settingsDirty) appState.settings = latest.settings;
+          persistLocalDraft();
           renderAll();
         }).catch(() => {});
       });
@@ -851,40 +988,65 @@
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify(appState, null, 2)], { type: 'application/json' }));
     a.download = `pocket-os-backup-${todayStr()}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    logAction('data.export', null, { topics: appState.topics.length });
   }
 
   function importData(event) {
     const file = event.target.files[0]; if (!file) return;
     const reader = new FileReader();
-    reader.onload = e => { try { const d = JSON.parse(e.target.result); if (d.topics) { appState = d; if (!appState.settings) appState.settings = {}; if (!appState.settings.stepDefs) appState.settings.stepDefs = JSON.parse(JSON.stringify(DEFAULT_STEP_DEFS)); markDirty('*'); markSettingsDirty(); saveData(); renderAll(); alert('导入成功！'); } } catch (err) { alert('导入失败'); } };
+    reader.onload = async e => {
+      try {
+        const d = JSON.parse(e.target.result);
+        if (!Array.isArray(d.topics)) throw new Error('备份中缺少 topics 数组');
+        if (!confirm(`将用备份中的 ${d.topics.length} 个选题完整替换服务器现有数据，继续？`)) return;
+        if (!d.settings) d.settings = {};
+        if (!d.settings.stepDefs) d.settings.stepDefs = JSON.parse(JSON.stringify(DEFAULT_STEP_DEFS));
+        await flushSave(); clearTimeout(saveTimer);
+        const res = await fetch('/api/data', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || '服务器拒绝导入');
+        const latest = await fetch('/api/data').then(r => r.json());
+        appState = latest;
+        _dirtyTopics.clear(); _settingsDirty = false; _topicConflicts.clear(); scheduleHistory.clear(); persistLocalDraft();
+        try { localStorage.setItem('pocket_os_backup', JSON.stringify(appState)); } catch {}
+        logAction('data.import', null, { topics: appState.topics.length, file: file.name });
+        renderAll();
+        alert('导入成功，服务器数据已完整替换。');
+      } catch (err) { alert('导入失败：' + err.message); }
+    };
     reader.readAsText(file); event.target.value = '';
   }
 
   // ── CRUD ──
-  function createTopic() {
+  function createTopic(templateId = '') {
     const topic = {
       id: genId(), title: '新选题', category: '内容', projectType: '自有项目', platforms: [],
       publishDate: '', preparationTasks: [], productionSteps: [],
       projectStatus: 'normal', createdAt: nowISO(), updatedAt: nowISO()
     };
     // 所有工序默认「未安排」，等用户手动设置发布日期后只联动发布节点
-    topic.productionSteps = getStepDefs().map(def => ({
-      key: def.key, name: def.name, startDate: '', endDate: '',
-      duration: def.duration, color: def.color, done: false, cleared: true
-    }));
+    const blueprint = PocketWorkflow.blueprint(templateId, getStepDefs(), appState.settings.projectTemplates || []);
+    topic.productionSteps = blueprint.productionSteps;
+    topic.preparationTasks = blueprint.tasks.map((text,i) => ({id:'prep_'+Date.now()+'_'+i,text,done:false}));
+    topic.lifecycle = 'preparation';
     appState.topics.push(topic);
     selectedTopicId = topic.id;
-    editMode = true;
     markDirty(topic.id);
     saveData();
     logAction('topic.create', topic.id, { title: topic.title });
     switchView('edit');
+    const titleInput = document.getElementById('topic-title');
+    if (titleInput) { titleInput.focus(); titleInput.select(); }
   }
 
   async function deleteTopic(id) {
     const t = appState.topics.find(t => t.id === id);
     if (!t) return;
     if (!confirm(`确定删除「${t.title}」？\n\n此操作不可恢复，所有工序、备注、通告信息将被永久删除。`)) return;
+    _dirtyTopics.delete(id);
+    if (savingPromise) await savingPromise;
+    _dirtyTopics.delete(id);
     logAction('topic.delete', id, { title: t?.title });
     try {
       const res = await fetch(`/api/topic/${id}`, { method: 'DELETE' });
@@ -894,6 +1056,7 @@
       return;
     }
     appState.topics = appState.topics.filter(t => t.id !== id);
+    _dirtyTopics.delete(id); _topicConflicts.delete(id); scheduleHistory.delete(id); persistLocalDraft();
     if (selectedTopicId === id) selectedTopicId = appState.topics.length ? appState.topics[0].id : null;
     if (currentView === 'edit') switchView('calendar');
     else renderAll();
@@ -907,16 +1070,22 @@
   }
 
   function exitEdit() {
-    switchView('calendar');
+    switchView(workbenchReturn.view, true);
+    requestAnimationFrame(() => {
+      const main = document.getElementById('workspace-main'); if (main) main.scrollTop = workbenchReturn.top;
+      window.scrollTo?.(0, workbenchReturn.windowTop || 0);
+      const gantt = document.getElementById('gantt-scroll-wrapper'); if(gantt) gantt.scrollLeft = workbenchReturn.left;
+    });
   }
 
   // ── 视图切换 ──
-  function switchView(view) {
-    if (editMode && currentView === 'edit' && view !== 'edit') {
-      if (!confirm('正在编辑中，确认离开？未保存的更改将保留。')) return;
+  function switchView(view, returning = false) {
+    const enteringEditor = view === 'edit' && (currentView !== 'edit' || renderedTopicId !== selectedTopicId);
+    if (view === 'edit' && currentView !== 'edit') {
+      workbenchReturn = { view: currentView, top: document.getElementById('workspace-main')?.scrollTop || 0,
+        windowTop: window.scrollY || 0, left: document.getElementById('gantt-scroll-wrapper')?.scrollLeft || 0 };
     }
     currentView = view;
-    editMode = false;
     closeSidebar();
     document.getElementById('view-calendar').classList.toggle('hidden', view !== 'calendar');
     document.getElementById('view-card').classList.toggle('hidden', view !== 'card');
@@ -927,8 +1096,8 @@
     const isCal = view === 'calendar' || view === 'edit';
     calTab.className = 'flex-1 py-2.5 text-xs font-medium text-center border-b-2 transition-colors ' + (isCal ? 'border-brand text-brand' : 'border-transparent text-coffee-light');
     cardTab.className = 'flex-1 py-2.5 text-xs font-medium text-center border-b-2 transition-colors ' + (view === 'card' ? 'border-brand text-brand' : 'border-transparent text-coffee-light');
-    renderAll();
-    if (view === 'calendar') setTimeout(scrollCalendarToToday, 50);
+    if (view !== 'edit') renderAll();
+    if (view === 'calendar' && !returning) setTimeout(scrollCalendarToToday, 50);
     if (view === 'edit') {
       const topic = appState.topics.find(t => t.id === selectedTopicId);
       if (topic?.canboxImport?.shootStart) {
@@ -952,6 +1121,8 @@
         projectCalMonth = now.getMonth();
       }
     }
+    if (view === 'edit') renderAll();
+    if (enteringEditor) { document.getElementById('workspace-main').scrollTop = 0; window.scrollTo(0,0); }
   }
 
   // ── 日历无缝滚动 ──
@@ -1005,19 +1176,21 @@
     const todayFmt = todayStr();
     const soonFmt = addDays(todayFmt, 2);
     steps.forEach(step => {
-      let mergeStart = null;
-      for (let i = 0; i < dates.length; i++) {
-        const d = dates[i];
-        const inRange = d >= step.startDate && d <= (step.endDate || step.startDate);
-        if (inRange && mergeStart === null) mergeStart = i;
-        if ((!inRange || i === dates.length - 1) && mergeStart !== null) {
-          const endIdx = inRange ? i : i - 1;
-          const delayed = !step.done && step.endDate && step.endDate < todayFmt;
-          const upcoming = !step.done && step.endDate && step.endDate >= todayFmt && step.endDate <= soonFmt;
-          blocks.push({ step, startIdx: mergeStart, endIdx, conflict: delayed, upcoming, lane: 0 });
-          mergeStart = null;
+      getStepRanges(step).forEach((range, rangeIndex) => {
+        let mergeStart = null;
+        for (let i = 0; i < dates.length; i++) {
+          const d = dates[i];
+          const inRange = d >= range.start && d <= range.end;
+          if (inRange && mergeStart === null) mergeStart = i;
+          if ((!inRange || i === dates.length - 1) && mergeStart !== null) {
+            const endIdx = inRange ? i : i - 1;
+            const delayed = !step.done && range.end < todayFmt;
+            const upcoming = !step.done && range.end >= todayFmt && range.end <= soonFmt;
+            blocks.push({ step, range, rangeIndex, startIdx: mergeStart, endIdx, conflict: delayed, upcoming, lane: 0 });
+            mergeStart = null;
+          }
         }
-      }
+      });
     });
     // 分配纵向层级：重叠的块放到不同 lane
     blocks.sort((a, b) => a.startIdx - b.startIdx || a.endIdx - b.endIdx);
@@ -1068,7 +1241,7 @@
       const ROW_BASE = 52;
       const LANE_H = 26;
       const rowH = Math.max(ROW_BASE, blocks.maxLanes * LANE_H + 4);
-      html += `<div class="gantt-row" style="width:${dates.length * CELL_W}px;height:${rowH}px">`;
+      html += `<div class="gantt-row" style="width:${dates.length * CELL_W}px;height:${rowH}px" ondragover="event.preventDefault()" ondrop="ganttDropOnRow(event,'${topic.id}','${dates[0]}')">`;
       if (isPend) {
         html += `<div class="absolute inset-0 pending-stripe" style="z-index:1;pointer-events:none"></div>`;
       }
@@ -1088,10 +1261,11 @@
         const left = b.startIdx * CELL_W + 2;
         const width = (b.endIdx - b.startIdx + 1) * CELL_W - 4;
         const top = b.lane * LANE_H + 2;
-        html += `<div class="gantt-merged rounded px-1.5 flex items-center text-xs font-medium truncate ${b.conflict?'conflict-pulse':''}" style="left:${left}px;width:${width}px;top:${top}px;height:${LANE_H - 4}px;background:${b.step.color}${b.step.done?'88':''};${b.step.done?'text-decoration:line-through':''};${b.conflict?'border:2px dashed #E8A87C':''};${b.upcoming?'border:2px solid #F2D98B':''};cursor:grab" draggable="true" ondragstart="ganttDragStart(event,'${topic.id}','${b.step.key}')" ondragend="ganttDragEnd(event)" onclick="onGanttBlockClick(event,'${topic.id}','${b.step.key}')" title="${b.step.name} (${b.step.startDate} ~ ${b.step.endDate})${b.conflict?' - 延期':''}${b.upcoming?' - 即将到期':''}">
-          <div class="resize-handle left" onmousedown="ganttResizeStart(event,'${topic.id}','${b.step.key}','left')"></div>
-          <span class="flex-1 truncate pointer-events-none">${b.step.name}</span>
-          <div class="resize-handle right" onmousedown="ganttResizeStart(event,'${topic.id}','${b.step.key}','right')"></div>
+        const canResize = b.step.key !== 'publish' && !(b.step.key === 'shoot' && getStepRanges(b.step).length > 1);
+        html += `<div class="gantt-merged rounded px-1.5 flex items-center text-xs font-medium truncate ${b.conflict?'conflict-pulse':''}" style="left:${left}px;width:${width}px;top:${top}px;height:${LANE_H - 4}px;background:${b.step.color}${b.step.done?'88':''};${b.step.done?'text-decoration:line-through':''};${b.conflict?'border:2px dashed #E8A87C':''};${b.upcoming?'border:2px solid #F2D98B':''};cursor:grab" draggable="true" ondragstart="ganttDragStart(event,'${topic.id}','${b.step.key}',${b.rangeIndex},'${dates[b.startIdx]}')" ondragend="ganttDragEnd(event)" onclick="onGanttBlockClick(event,'${topic.id}','${b.step.key}')" title="${escapeHtml(b.step.name)} (${b.range.start} ~ ${b.range.end})${b.conflict?' - 延期':''}${b.upcoming?' - 即将到期':''}">
+          ${canResize ? `<div class="resize-handle left" onmousedown="ganttResizeStart(event,'${topic.id}','${b.step.key}','left')"></div>` : ''}
+          <span class="flex-1 truncate pointer-events-none">${escapeHtml(b.step.name)}</span>
+          ${canResize ? `<div class="resize-handle right" onmousedown="ganttResizeStart(event,'${topic.id}','${b.step.key}','right')"></div>` : ''}
         </div>`;
       });
 
@@ -1106,7 +1280,7 @@
     const dates = getGanttDates();
     const defs = getStepDefs();
     const legend = document.getElementById('gantt-legend');
-    if (legend) legend.innerHTML = '<span class="text-xs text-coffee-light">图例：</span>' + defs.map(s => `<span class="inline-flex items-center gap-1 text-xs"><span class="w-3 h-3 rounded" style="background:${s.color}"></span>${s.name}</span>`).join('');
+    if (legend) legend.innerHTML = '<span class="text-xs text-coffee-light">图例：</span>' + defs.map(s => `<span class="inline-flex items-center gap-1 text-xs"><span class="w-3 h-3 rounded" style="background:${s.color}"></span>${escapeHtml(s.name)}</span>`).join('');
     updateCalendarRange();
     renderGanttTable('gantt-container', dates, activeTopics(), true, true);
     const wrapper = document.getElementById('gantt-scroll-wrapper');
@@ -1127,13 +1301,15 @@
     title.textContent = `${shortDate(date)} · 放置工序`;
 
     const list = document.getElementById('step-popup-list');
-    list.innerHTML = defs.map(def => {
+    const choices = [...steps, ...defs.filter(d => !steps.some(s => s.key === d.key))];
+    list.innerHTML = choices.map(def => {
       const existing = steps.find(s => s.key === def.key);
-      const isOnDate = existing && date >= existing.startDate && date <= (existing.endDate || existing.startDate);
-      const label = existing ? (isOnDate ? '当前在此' : `移动到 ${shortDate(date)}`) : '添加';
+      const isOnDate = existing && getStepRanges(existing).some(r => date >= r.start && date <= r.end);
+      const scheduled = existing && getStepRanges(existing).length;
+      const label = scheduled ? (getStepRanges(existing).length > 1 ? '整组拍摄移至此日' : `移至 ${shortDate(date)}`) : '安排在此日';
       return `<button onclick="addStepFromPopup('${topicId}','${def.key}','${date}')" class="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-beige-100 text-left transition-colors ${isOnDate?'opacity-40':''}">
         <span class="w-3 h-3 rounded flex-shrink-0" style="background:${def.color}"></span>
-        <span class="text-sm text-coffee flex-1">${def.name}</span>
+        <span class="text-sm text-coffee flex-1">${escapeHtml(def.name)}</span>
         <span class="text-xs ${existing?'text-brand':'text-coffee-light'}">${label}</span>
       </button>`;
     }).join('');
@@ -1152,63 +1328,21 @@
     popup.style.top = (rect.bottom + 4) + 'px';
     popup.style.left = Math.min(rect.left, window.innerWidth - 220) + 'px';
     popup.classList.remove('hidden');
+    popup.style.top = Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - popup.offsetHeight - 8)) + 'px';
     setTimeout(() => document.addEventListener('click', closeStepPopupOnOutside), 0);
   }
 
   function addStepFromPopup(topicId, stepKey, date) {
-    const topic = appState.topics.find(t => t.id === topicId);
-    if (!topic) return;
-    const defs = getStepDefs();
-    const def = defs.find(d => d.key === stepKey);
-    if (!def) return;
-
-    const steps = topic.productionSteps || [];
-    const existing = steps.find(s => s.key === stepKey);
-    const newEnd = date;
-
-    if (existing) {
-      const stepIdx = defs.findIndex(d => d.key === stepKey);
-      const delta = daysBetween(existing.startDate || date, date);
-      existing.startDate = date;
-      existing.endDate = newEnd;
-      existing.cleared = false;
-
-      // 向后推挤
-      if (delta > 0) {
-        let prevEnd = existing.endDate;
-        for (let i = stepIdx + 1; i < defs.length; i++) {
-          const next = steps.find(s => s.key === defs[i].key);
-          if (!next) continue;
-          if (next.startDate <= prevEnd) {
-            const shift = daysBetween(next.startDate, addDays(prevEnd, 1));
-            next.startDate = addDays(next.startDate, shift);
-            next.endDate = addDays(next.endDate, shift);
-            prevEnd = next.endDate;
-          } else break;
-        }
-      }
-
-      // 向前推挤
-      if (delta < 0) {
-        let prevStart = existing.startDate;
-        for (let i = stepIdx - 1; i >= 0; i--) {
-          const prev = steps.find(s => s.key === defs[i].key);
-          if (!prev) continue;
-          if (prev.endDate >= prevStart) {
-            const shift = daysBetween(prev.endDate, addDays(prevStart, -1));
-            prev.startDate = addDays(prev.startDate, shift);
-            prev.endDate = addDays(prev.endDate, shift);
-            prevStart = prev.startDate;
-          } else break;
-        }
-      }
-    } else {
-      topic.productionSteps.push({ key: def.key, name: def.name, startDate: date, endDate: date, duration: 1, color: def.color, done: false });
-      sortStepsByDefaultOrder(topic.productionSteps);
-    }
-
-    markUpdated(topic);
-    saveData(); closeStepPopup(); renderAll();
+    const topic = appState.topics.find(t => t.id === topicId); if (!topic) return;
+    const def = getStepDefs().find(s => s.key === stepKey);
+    const existing = topic.productionSteps.find(s => s.key === stepKey);
+    if (!existing && !def) return;
+    changeSchedule(topic, () => {
+      const step = existing || PocketSchedule.blankSteps([def])[0];
+      if (!existing) topic.productionSteps.push(step);
+      PocketSchedule.move(step, date);
+    }, { stepKey, date, source: 'calendar-cell' });
+    closeStepPopup();
   }
 
   function closeStepPopup() { document.getElementById('step-popup').classList.add('hidden'); document.removeEventListener('click', closeStepPopupOnOutside); }
@@ -1217,151 +1351,101 @@
   // ── 甘特图色块点击 → 删除确认 ──
   function onGanttBlockClick(e, topicId, stepKey) {
     e.stopPropagation();
-    if (dragData || wasDragging) return;
-    // 检测是否为拖拽产生的误点击（鼠标位移超过 4px）
-    if (dragStartPos) {
-      const dx = Math.abs(e.clientX - dragStartPos.x);
-      const dy = Math.abs(e.clientY - dragStartPos.y);
-      if (dx > 4 || dy > 4) { dragStartPos = null; return; }
-      dragStartPos = null;
-    }
+    if (dragData || wasDragging || resizeData) return;
+    closeStepPopup();
+    selectTopic(topicId);
     const topic = appState.topics.find(t => t.id === topicId);
-    if (!topic) return;
-    const step = topic.productionSteps.find(s => s.key === stepKey);
-    if (!step) return;
-
-    const popup = document.getElementById('step-popup');
-    const title = document.getElementById('step-popup-title');
-    title.textContent = step.name;
-
-    const list = document.getElementById('step-popup-list');
-    list.innerHTML = `
-      <div class="text-xs text-coffee-light mb-2">${step.startDate} ~ ${step.endDate || step.startDate}${step.done ? ' · 已完成' : ''}</div>
-      <button onclick="confirmDeleteStep('${topicId}','${stepKey}')" class="w-full flex items-center gap-2 px-2 py-2 rounded hover:bg-red-50 text-left transition-colors text-red-600">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-        删除此工序
-      </button>`;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    popup.style.top = (rect.bottom + 4) + 'px';
-    popup.style.left = Math.min(rect.left, window.innerWidth - 220) + 'px';
-    popup.classList.remove('hidden');
-    setTimeout(() => document.addEventListener('click', closeStepPopupOnOutside), 0);
+    const idx = topic?.productionSteps.findIndex(s => s.key === stepKey);
+    const row = document.getElementById('step-row-' + idx);
+    if (row) { row.scrollIntoView({ block: 'center', behavior: 'smooth' }); row.querySelector('input[type="date"]')?.focus({ preventScroll: true }); }
   }
 
-  function confirmDeleteStep(topicId, stepKey) {
-    const topic = appState.topics.find(t => t.id === topicId);
-    if (!topic) return;
-    const step = topic.productionSteps.find(s => s.key === stepKey);
-    if (!step) return;
-    if (!confirm(`确认删除工序「${step.name}」？`)) return;
-    topic.productionSteps = topic.productionSteps.filter(s => s.key !== stepKey);
-    markUpdated(topic); saveData(); closeStepPopup(); renderAll();
+  function confirmDeleteStep(topicId, stepKey) { deleteStep(topicId, stepKey); closeStepPopup();
   }
 
   // ── 甘特图拖拽 ──
   let dragData = null;
   let wasDragging = false;
   let dragStartPos = null;
-  function ganttDragStart(e, topicId, stepKey) { dragData = { topicId, stepKey }; wasDragging = false; dragStartPos = { x: e.clientX, y: e.clientY }; e.dataTransfer.effectAllowed = 'move'; e.target.classList.add('dragging'); }
+  function ganttDragStart(e, topicId, stepKey, rangeIndex = 0, visibleStart) {
+    const step = appState.topics.find(t => t.id === topicId)?.productionSteps.find(s => s.key === stepKey);
+    const range = getStepRanges(step)[rangeIndex];
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetDays = Math.max(0, Math.floor((e.clientX - rect.left) / CELL_W)) + (range && visibleStart ? daysBetween(range.start, visibleStart) : 0);
+    dragData = { topicId, stepKey, rangeIndex, offsetDays }; wasDragging = false;
+    dragStartPos = { x: e.clientX, y: e.clientY };
+    if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', stepKey); }
+    e.currentTarget.classList.add('dragging');
+  }
   function ganttDragEnd(e) { e.target.classList.remove('dragging'); if (dragData) wasDragging = true; dragData = null; setTimeout(() => wasDragging = false, 200); }
   function ganttDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
   function ganttDrop(e, topicId, targetDate) {
     e.preventDefault(); e.currentTarget.classList.remove('drag-over');
+    const data = dragData; dragData = null; wasDragging = true;
+    setTimeout(() => { wasDragging = false; }, 200);
+    if (!data || data.topicId !== topicId) return;
+    const topic = appState.topics.find(t => t.id === topicId);
+    const step = topic?.productionSteps.find(s => s.key === data.stepKey);
+    if (!step) return;
+    targetDate = addDays(targetDate, -(data.offsetDays || 0));
+    changeSchedule(topic, () => PocketSchedule.move(step, targetDate, data.rangeIndex ?? null),
+      { step: step.name, action: 'move', date: targetDate, segment: data.rangeIndex });
+  }
+  function ganttDropOnRow(e, topicId, firstDate) {
     if (!dragData) return;
-    const topic = appState.topics.find(t => t.id === dragData.topicId);
-    if (!topic) return;
-    const steps = topic.productionSteps;
-    const defs = getStepDefs();
-    const stepIdx = defs.findIndex(d => d.key === dragData.stepKey);
-    const step = steps.find(s => s.key === dragData.stepKey);
-    if (!step || stepIdx < 0) return;
-
-    const dur = step.cleared ? 0 : daysBetween(step.startDate, step.endDate);
-    const newEnd = addDays(targetDate, dur);
-    const delta = step.cleared ? 1 : daysBetween(step.startDate, targetDate);
-    step.startDate = targetDate;
-    step.endDate = newEnd;
-    step.cleared = false;
-    if (step.key === 'publish') topic.publishDate = targetDate;
-
-    // 向后推挤：如果移动后与下一个工序接触/重叠，推走后续工序
-    if (delta > 0) {
-      let prevEnd = step.endDate;
-      for (let i = stepIdx + 1; i < defs.length; i++) {
-        const next = steps.find(s => s.key === defs[i].key);
-        if (!next) continue;
-        if (next.startDate <= prevEnd) {
-          const shift = daysBetween(next.startDate, addDays(prevEnd, 1));
-          next.startDate = addDays(next.startDate, shift);
-          next.endDate = addDays(next.endDate, shift);
-          prevEnd = next.endDate;
-        } else break;
-      }
-    }
-
-    // 向前推挤：如果移动后与上一个工序接触/重叠，推走上一个工序
-    if (delta < 0) {
-      let prevStart = step.startDate;
-      for (let i = stepIdx - 1; i >= 0; i--) {
-        const prev = steps.find(s => s.key === defs[i].key);
-        if (!prev) continue;
-        if (prev.endDate >= prevStart) {
-          const shift = daysBetween(prev.endDate, addDays(prevStart, -1));
-          prev.startDate = addDays(prev.startDate, shift);
-          prev.endDate = addDays(prev.endDate, shift);
-          prevStart = prev.startDate;
-        } else break;
-      }
-    }
-
-    markUpdated(topic); saveData(); renderAll(); dragData = null;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const column = Math.floor((e.clientX - rect.left) / CELL_W);
+    if (column < 0 || column >= Math.round(rect.width / CELL_W)) return;
+    ganttDrop(e, topicId, addDays(firstDate, column));
   }
   let resizeData = null;
   function ganttResizeStart(e, topicId, stepKey, side) {
     e.preventDefault(); e.stopPropagation();
-    resizeData = { topicId, stepKey, side, startX: e.clientX };
+    const topic = appState.topics.find(t => t.id === topicId);
+    const step = topic?.productionSteps.find(s => s.key === stepKey);
+    if (!step || step.key === 'publish' || getStepRanges(step).length !== 1) return;
+    resizeData = { topicId, stepKey, side, startX: e.clientX, original: { ...step }, snapshot: scheduleSnapshot(topic) };
     document.addEventListener('mousemove', ganttResizeMove);
     document.addEventListener('mouseup', ganttResizeEnd);
   }
   function ganttResizeMove(e) {
     if (!resizeData) return;
-    const diff = Math.round((e.clientX - resizeData.startX) / CELL_W);
-    if (diff === 0) return;
+    const delta = Math.round((e.clientX - resizeData.startX) / CELL_W);
     const topic = appState.topics.find(t => t.id === resizeData.topicId);
-    if (!topic) return;
-    const step = topic.productionSteps.find(s => s.key === resizeData.stepKey);
+    const step = topic?.productionSteps.find(s => s.key === resizeData.stepKey);
     if (!step) return;
-    if (resizeData.side === 'left') {
-      const ns = addDays(step.startDate, diff);
-      if (ns <= step.endDate) { step.startDate = ns; step.duration = daysBetween(step.startDate, step.endDate) + 1; }
-    } else {
-      const ne = addDays(step.endDate, diff);
-      if (ne >= step.startDate) { step.endDate = ne; step.duration = daysBetween(step.startDate, step.endDate) + 1; }
-    }
-    resizeData.startX = e.clientX; markUpdated(topic); saveData();
-    // 保存滚动位置再渲染
-    const wrapper = document.getElementById('gantt-scroll-wrapper');
-    const savedScroll = wrapper ? wrapper.scrollLeft : 0;
-    renderAll();
-    if (wrapper) wrapper.scrollLeft = savedScroll;
-    // 发布工序 resize → 同步 publishDate
-    if (step.key === 'publish') { topic.publishDate = step.startDate; saveData(); }
+    const start = addDays(resizeData.original.startDate, resizeData.side === 'left' ? delta : 0);
+    const end = addDays(resizeData.original.endDate, resizeData.side === 'right' ? delta : 0);
+    if (start > end) return;
+    PocketSchedule.setRanges(step, [{ start, end }]);
+    refreshScheduleViews();
   }
-  function ganttResizeEnd() { resizeData = null; document.removeEventListener('mousemove', ganttResizeMove); document.removeEventListener('mouseup', ganttResizeEnd); }
+  function ganttResizeEnd() {
+    if (resizeData) {
+      const topic = appState.topics.find(t => t.id === resizeData.topicId);
+      if (topic && JSON.stringify(scheduleSnapshot(topic)) !== JSON.stringify(resizeData.snapshot)) {
+        rememberSchedule(topic, resizeData.snapshot);
+        topic.scheduleConfirmed = false;
+        markUpdated(topic); saveData(); logAction('step.update', topic.id, { action: 'resize', key: resizeData.stepKey });
+        wasDragging = true; setTimeout(() => { wasDragging = false; }, 200);
+      }
+    }
+    resizeData = null; renderAll();
+    document.removeEventListener('mousemove', ganttResizeMove); document.removeEventListener('mouseup', ganttResizeEnd);
+  }
 
   // ── 概述卡 ──
   function renderTopicSummaries() {
     const el = document.getElementById('topic-summaries');
     if (!el) return;
     const active = activeTopics();
-    if (!active.length) { el.innerHTML = '<p class="text-xs text-coffee-light col-span-full text-center py-8">暂无进行中的选题</p>'; return; }
+    if (!active.length) { el.innerHTML = '<p class="text-xs text-coffee-light col-span-full text-center py-8">没有符合筛选条件的项目</p>'; return; }
     el.innerHTML = active.map(topic => {
       const progress = calcProgress(topic);
       const conflict = checkConflict(getActiveSteps(topic));
       const pubDate = topic.publishDate || '';
       const daysLeft = pubDate ? daysBetween(todayStr(), pubDate) : null;
-      const allSteps = getActiveSteps(topic);
+      const allSteps = topic.productionSteps || [];
       const isPend = topic.projectStatus === 'pending';
       const cb = topic.canboxImport || {};
       const plats = topic.platforms || [];
@@ -1397,7 +1481,7 @@
         const isC = conflict.hasConflict && conflict.stepKey === step.key;
         html += `<div class="flex items-center gap-1 ${isC?'text-danger-text':''}" onclick="event.stopPropagation();toggleStepByKey('${topic.id}','${step.key}')">
           <div class="w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 cursor-pointer ${step.done?'border-green-500 bg-green-500':'border-beige-300'}">${step.done?'<svg class="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>':''}</div>
-          <span class="text-xs ${step.done?'line-through text-coffee-light':'text-coffee'}">${step.name}</span>
+          <span class="text-xs ${step.done?'line-through text-coffee-light':'text-coffee'}">${escapeHtml(step.name)}</span>
           ${step.startDate ? `<span class="text-xs text-coffee-light">${shortDate(step.startDate)}</span>` : ''}
         </div>`;
       });
@@ -1426,6 +1510,7 @@
 
   // ── 渲染总调度 ──
   function renderAll() {
+    renderWorkflowOverview();
     renderTopicList();
     if (appState.topics.length === 0 && currentView !== 'edit') {
       document.getElementById('view-calendar').classList.add('hidden');
@@ -1451,7 +1536,7 @@
   function renderTopicList() {
     const list = document.getElementById('topic-list');
     if (!appState.topics.length) { list.innerHTML = '<p class="text-xs text-coffee-light text-center mt-8">暂无选题</p>'; return; }
-    const active = activeTopics();
+    const active = sortedTopics().filter(t => !t.completed);
     const completed = completedTopics();
 
     let html = '';
@@ -1489,6 +1574,7 @@
   // ── 选题卡列表（可点击进入编辑）──
   function renderCardList() {
     const grid = document.getElementById('card-grid');
+    if (!activeTopics().length) { grid.innerHTML = '<p class="text-sm text-coffee-light py-8">没有符合筛选条件的项目</p>'; return; }
     if (!appState.topics.length) { grid.innerHTML = ''; return; }
     grid.innerHTML = activeTopics().map(topic => {
       const progress = calcProgress(topic);
@@ -1496,7 +1582,7 @@
       const pubDate = topic.publishDate || '';
       const daysLeft = pubDate ? daysBetween(todayStr(), pubDate) : null;
       const steps = getActiveSteps(topic);
-      const summarySteps = steps.filter(s => SUMMARY_KEYS.includes(s.key));
+      const summarySteps = (topic.productionSteps || []);
 
       let html = `<div class="bg-white rounded-2xl p-5 shadow-sm border border-[#EFECE6] text-coffee flex flex-col gap-3 hover:shadow-md transition-shadow">`;
       html += `<div class="flex items-start justify-between">
@@ -1519,7 +1605,7 @@
         const isC = conflict.hasConflict && conflict.stepKey === step.key;
         html += `<div class="flex items-center gap-2 py-1 px-1 rounded ${isC?'bg-danger-bg':''}">
           <div class="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${step.done?'border-green-500 bg-green-500':'border-beige-300'}">${step.done?'<svg class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>':''}</div>
-          <span class="text-xs ${step.done?'line-through text-coffee-light':'text-coffee'} flex-1 truncate">${step.name}</span>
+          <span class="text-xs ${step.done?'line-through text-coffee-light':'text-coffee'} flex-1 truncate">${escapeHtml(step.name)}</span>
           <span class="text-xs text-coffee-light">${shortDate(step.startDate)}</span>
         </div>`;
       });
@@ -1531,299 +1617,140 @@
   }
 
   // ── 单选题编辑页 ──
-  let editMode = false;
+  let renderedTopicId = null;
 
   function renderEditPage() {
     const topic = appState.topics.find(t => t.id === selectedTopicId);
     if (!topic) { switchView('calendar'); return; }
-
-    // 内嵌小日历
-    if (!ganttStartDate) initGanttRange();
-    const dates = getGanttDates();
-    renderGanttTable('edit-gantt-container', dates, [topic], false, true);
-    const wrapper = document.getElementById('edit-gantt-wrapper');
-    if (wrapper) {
-      wrapper.scrollLeft = 0;
-      const todayIdx = dates.indexOf(todayStr());
-      if (todayIdx >= 0) wrapper.scrollLeft = Math.max(0, todayIdx * CELL_W - 200);
-    }
-
+    const sameTopic = renderedTopicId === topic.id;
+    const drafts = {};
+    if (sameTopic) document.querySelectorAll('#edit-card-content [data-draft]').forEach(input => { drafts[input.id] = input.value; });
+    const focused = sameTopic && document.activeElement?.closest('#edit-card-content') ? document.activeElement.id : '';
+    const selection = focused ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
     const el = document.getElementById('edit-card-content');
+    const steps = topic.productionSteps || [], tasks = topic.preparationTasks || [];
+    const cb = topic.canboxImport;
     const progress = calcProgress(topic);
-    const conflict = checkConflict(getActiveSteps(topic));
-    const pubDate = topic.publishDate || '';
-    const daysLeft = pubDate ? daysBetween(todayStr(), pubDate) : null;
-    const steps = topic.productionSteps || [];
-    const activeSteps = getActiveSteps(topic);
-    const tasks = topic.preparationTasks || [];
-    const cb = topic.canboxImport || {};
-    const hasShootDates = cb.shootStart && cb.shootEnd;
-    const plats = topic.platforms || [];
-
-    // ══════════════════════════════════════
-    //  展示态（只读）
-    // ══════════════════════════════════════
-    let html = `<div id="card-${topic.id}" class="topic-card bg-white rounded-2xl p-6 shadow-sm border border-[#EFECE6] text-coffee flex flex-col gap-4 relative ${isPending(topic)?'pending-card':''}">`;
-
-    // 变动中横幅
-    if (isPending(topic)) {
-      html += `<div class="pending-banner rounded-lg px-4 py-2.5 flex items-center gap-2 -mx-6 -mt-6 mb-2 px-6 py-3" style="border-radius:1rem 1rem 0 0">
-        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
-        <span class="text-sm font-medium">项目变动中 — 待确认新排期</span>
-        ${topic.pendingReason ? `<span class="text-xs opacity-70">（${escapeHtml(topic.pendingReason)}）</span>` : ''}
-        <button onclick="confirmNewSchedule('${topic.id}')" class="ml-auto text-xs font-medium px-2 py-0.5 rounded border border-current hover:bg-white/50 transition-colors">确认新排期</button>
+    let html = `<article id="card-${topic.id}" class="topic-card bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-beige-200 space-y-5">
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <span class="text-xs text-coffee-light">项目 · 直接编辑</span>
+        <button type="button" data-save-status onclick="flushSave()" class="text-xs text-sage-text rounded px-2 py-1" aria-live="polite">已保存</button>
       </div>`;
-    }
-
-    // 头部按钮行
-    html += `<div class="flex items-center justify-between mb-2">
-      <div class="flex items-center gap-2">
-        ${topic.completed ? '<span class="completed-badge">已完成</span>' : ''}
-        ${isPending(topic) ? '<span class="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 font-medium">变动中</span>' : ''}
+    const conflict = _topicConflicts.get(topic.id);
+    if (conflict) html += `<div class="rounded-lg border border-orange-300 bg-orange-50 p-3 text-sm text-orange-800">
+      <p>${conflict.serverTopic ? '其他设备修改了这个项目，请选择要保留的版本。' : '这个项目已在服务器删除，可保留当前版本重新保存。'}</p>
+      <div class="flex gap-2 mt-2 flex-wrap"><button onclick="resolveConflictUseServer('${topic.id}')" class="editor-button">采用服务器版本</button><button onclick="resolveConflictOverwrite('${topic.id}')" class="editor-button">保留当前版本</button></div></div>`;
+    if (isPending(topic)) html += `<div class="pending-banner rounded-lg p-3 text-sm flex items-center gap-2 flex-wrap"><span class="flex-1">排期调整中${topic.pendingReason ? ' · ' + escapeHtml(topic.pendingReason) : ''}</span><button onclick="confirmNewSchedule('${topic.id}')" class="editor-button">确认排期</button></div>`;
+    html += `<div class="space-y-3">
+      <label class="block"><span class="text-xs text-coffee-light">项目名称</span>
+        <input id="topic-title" aria-label="项目名称" value="${escapeHtml(topic.title)}" oninput="commitTitle('${topic.id}',this.value)" onblur="if(!this.value.trim())this.value='新选题'" class="w-full text-xl font-semibold border border-beige-200 rounded-lg px-3 py-2 mt-1"></label>
+      <div class="flex items-end gap-4 flex-wrap">
+        <label class="text-xs text-coffee-light">分类<select aria-label="项目分类" onchange="selectCategory('${topic.id}',this.value)" class="block mt-1 text-sm text-coffee border border-beige-200 rounded-lg px-3 py-2">${CATEGORIES.map(c => `<option ${topic.category === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+        <label class="text-xs text-coffee-light">发布日期<input id="topic-publish" type="date" aria-label="发布日期" data-schedule-date data-field="publishDate" value="${topic.publishDate || ''}" onchange="updatePublishDate('${topic.id}',this.value)" class="block mt-1 text-sm text-coffee border border-beige-200 rounded-lg px-3 py-2"></label>
+        <button onclick="setPublishDateTBD('${topic.id}')" class="editor-button">日期未定</button>
+        <span class="text-xs text-coffee-light mb-2">每个节点独立安排，可并行进行</span>
       </div>
-      <div class="flex items-center gap-2">
-        <button onclick="copyTml('${topic.id}')" class="text-xs text-coffee-light border border-beige-300 rounded-lg px-3 py-1.5 hover:bg-beige-100 transition-colors">导出 TML</button>
-        ${!topic.completed ? `<button onclick="completeProject('${topic.id}')" class="text-xs text-green-600 border border-green-200 rounded-lg px-3 py-1.5 hover:bg-green-50 transition-colors">标记完成</button>` : ''}
-        ${!isPending(topic) ? `<button onclick="markProjectPending('${topic.id}')" class="text-xs text-orange-500 border border-orange-200 rounded-lg px-3 py-1.5 hover:bg-orange-50 transition-colors">项目变动</button>` : ''}
-        <button onclick="editMode=true;renderEditPage()" class="text-xs text-brand border border-brand rounded-lg px-4 py-1.5 hover:bg-brand hover:text-white transition-colors font-medium">编辑</button>
+      <div class="flex gap-2 flex-wrap">${PLATFORMS.map(p => `<button onclick="togglePlatform('${topic.id}','${p}')" aria-pressed="${(topic.platforms || []).includes(p)}" class="text-xs border rounded-full px-3 py-1.5 ${(topic.platforms || []).includes(p) ? 'bg-brand border-brand text-white' : 'border-beige-200 text-coffee-light'}">${p}</button>`).join('')}</div>
+    </div>
+    ${workflowEditorHtml(topic)}
+    <section aria-label="制作流程" class="space-y-3">
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <h3 class="text-sm font-semibold">制作流程 <span id="edit-progress" class="text-xs font-normal text-coffee-light">${progress}% 已完成</span></h3>
+        <button id="undo-schedule" onclick="undoSchedule('${topic.id}')" ${scheduleHistory.get(topic.id)?.length ? '' : 'disabled'} class="editor-button">撤销排期修改</button>
       </div>
-    </div>`;
-
-    // 分类 + 标题 + 发布日期 + 平台
-    html += `<div class="flex items-start justify-between">
-      <div class="flex-1 min-w-0">
-        <div class="flex items-center gap-2 mb-1">
-          <span class="inline-block bg-sage-bg text-sage-text text-xs rounded px-2 py-0.5 font-medium">${escapeHtml(topic.category || '内容')}</span>
-          ${plats.map(p => `<span class="text-xs px-2 py-0.5 rounded-full bg-brand text-white">${p}</span>`).join('')}
-        </div>
-        <h3 class="text-lg font-bold text-coffee">${escapeHtml(topic.title)}</h3>
-        <div class="time-meta mt-1">创建 ${shortTime(topic.createdAt)} · 编辑 ${shortTime(topic.updatedAt)}</div>
-      </div>
-      <div class="text-right ml-4 flex-shrink-0">
-        <div class="text-xs text-coffee-light mb-0.5">发布日期</div>
-        <div class="big-date text-coffee">${pubDate ? shortDate(pubDate) : '—'}</div>
-        ${pubDate ? (daysLeft !== null ? (daysLeft > 0 ? `<div class="text-xs text-coffee-light mt-0.5">${daysLeft} 天后</div>` : (daysLeft === 0 ? '<div class="text-xs text-brand font-medium mt-0.5">今天发布</div>' : `<div class="text-xs text-danger-text font-medium mt-0.5">已超 ${Math.abs(daysLeft)} 天</div>`)) : '') : '<div class="text-xs text-orange-500 font-medium mt-0.5">日期未定</div>'}
-      </div>
-    </div>`;
-
-    // 进度条
-    html += `<div class="flex items-center gap-3">
-      <div class="flex-1 h-2 bg-beige-100 rounded-full overflow-hidden"><div class="h-2 rounded-full progress-bar" style="width:${progress}%;background:${progress===100?'#38A169':'#B37D56'}"></div></div>
-      <span class="text-sm font-medium ${progress===100?'text-green-600':'text-coffee-light'}">${progress}%</span>
-    </div>`;
-
-    // 通告信息
-    if (cb.shootStart || cb.location || cb.director) {
-      html += `<div class="bg-sage-bg rounded-lg p-3 text-xs">
-        <span class="font-semibold text-sage-text block mb-1.5">通告信息</span>
-        <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">`;
-      if (cb.shootStart && cb.shootEnd) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#A5C8E1]"></span><span class="text-coffee-light">拍摄段</span> <span class="font-medium text-coffee">${cb.shootStart} ~ ${cb.shootEnd}</span></div>`;
-      if (cb.location) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#6BA3BE]"></span><span class="text-coffee-light">拍摄地</span> <span class="font-medium text-coffee">${escapeHtml(cb.location)}</span></div>`;
-      if (cb.director) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#E8A87C]"></span><span class="text-coffee-light">导演</span> <span class="font-bold text-coffee">${escapeHtml(cb.director)}</span></div>`;
-      if (cb.photographer) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#85CDCA]"></span><span class="text-coffee-light">摄影</span> <span class="font-bold text-coffee">${escapeHtml(cb.photographer)}</span></div>`;
-      if (cb.production) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#D5A5E1]"></span><span class="text-coffee-light">制片</span> <span class="font-bold text-coffee">${escapeHtml(cb.production)}</span></div>`;
-      if (cb.rd) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#A3D9A5]"></span><span class="text-coffee-light">研发</span> <span class="font-bold text-coffee">${escapeHtml(cb.rd)}</span></div>`;
-      if (cb.business) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#F2D98B]"></span><span class="text-coffee-light">商务</span> <span class="font-bold text-coffee">${escapeHtml(cb.business)}</span></div>`;
-      if (cb.audio) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#E1A5A5]"></span><span class="text-coffee-light">收音</span> <span class="font-bold text-coffee">${escapeHtml(cb.audio)}</span></div>`;
-      if (cb.operational) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#B8D4E3]"></span><span class="text-coffee-light">运营</span> <span class="font-bold text-coffee">${escapeHtml(cb.operational)}</span></div>`;
-      if (cb.laodao) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#B37D56]"></span><span class="font-bold text-brand">老刀出镜</span></div>`;
-      if (cb.advertiserNo) html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-[#D4A574]"></span><span class="text-coffee-light">商单</span> <span class="font-bold text-coffee">${escapeHtml(cb.advertiserNo)}</span></div>`;
-      html += `</div></div>`;
-    }
-
-    // 制作流程（只读）
-    html += `<div>
-      <h4 class="text-xs text-coffee-light mb-2">制作流程</h4>
-      <div class="space-y-1">`;
-    steps.forEach(step => {
-      const isCleared = step.cleared;
-      const isC = !isCleared && conflict.hasConflict && conflict.stepKey === step.key;
-      const isRange = !isCleared && step.startDate !== (step.endDate || step.startDate);
-      const isPend = isPending(topic) && !isCleared;
-      html += `<div class="flex items-center gap-2 py-1.5 px-2 rounded ${isCleared?'opacity-40':''} ${isC?'bg-danger-bg':''} ${isPend?'pending-step':''}">
-        <div class="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${step.done?'border-green-500 bg-green-500':'border-beige-300'}">${step.done?'<svg class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>':''}</div>
-        <span class="text-sm ${step.done?'line-through ':''}${isCleared?'text-coffee-light/60':'text-coffee'} w-20 flex-shrink-0 truncate">${step.name}</span>
-        ${isCleared
-          ? '<span class="text-xs text-coffee-light">未安排</span>'
-          : `<span class="text-xs ${isC?'text-danger-text font-medium':step.delayed?'text-orange-600':isPend?'text-orange-500':'text-coffee-light'}">${step.startDate || '—'}</span>
-            ${isRange ? `<span class="text-xs text-beige-300">~</span><span class="text-xs ${isC?'text-danger-text font-medium':'text-coffee-light'}">${step.endDate || ''}</span><span class="text-xs text-brand ml-1">${daysBetween(step.startDate, step.endDate)}天</span>` : ''}`
-        }
-        ${step.delayed ? '<span class="text-xs text-orange-500 ml-1">延期</span>' : ''}
-        ${isPend ? '<span class="text-xs text-orange-500 ml-1">待确认</span>' : ''}
-      </div>`;
-    });
-    html += `</div></div>`;
-
-    // 前置准备（只读）
-    if (tasks.length) {
-      html += `<div><h4 class="text-xs text-coffee-light mb-2">前置准备</h4><div class="space-y-1">`;
-      tasks.forEach(task => {
-        html += `<div class="flex items-center gap-2 py-1 px-2">
-          <div class="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${task.done?'border-green-500 bg-green-500':'border-beige-300'}">${task.done?'<svg class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>':''}</div>
-          <span class="text-sm ${task.done?'line-through text-coffee-light':'text-coffee'}">${escapeHtml(task.text)}</span>
-        </div>`;
-      });
-      html += `</div></div>`;
-    }
-
-    // TML 便签（只读）
-    if (topic.tmlNote) {
-      html += `<div><h4 class="text-xs text-coffee-light mb-2">TML 记录</h4>
-        <div class="bg-[#FFFDF5] border border-[#F0E6D0] rounded-lg p-3 text-sm text-coffee whitespace-pre-wrap font-mono leading-relaxed">${escapeHtml(topic.tmlNote)}</div></div>`;
-    }
-
-    // 冲突提示
-    if (conflict.hasConflict) {
-      html += `<div class="bg-danger-bg text-danger-text border border-danger-border rounded-lg px-4 py-3 text-sm">存在延期任务</div>`;
-    }
-
-    // 删除选题（展示态底部）
-    html += `<div class="border-t border-beige-200 pt-3 mt-2">
-      <button onclick="deleteTopic('${topic.id}')" class="text-xs text-red-400 border border-dashed border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors">删除选题</button>
-    </div>`;
-
-    // ══════════════════════════════════════
-    //  编辑态（点击编辑后展开）
-    // ══════════════════════════════════════
-    if (editMode) {
-      const isEditing = editingTitleId === topic.id;
-      html += `<div class="border-t-2 border-brand/20 pt-4 mt-2">
-        <div class="flex items-center justify-between mb-4">
-          <h4 class="text-sm font-semibold text-brand">编辑模式</h4>
-          <div class="flex items-center gap-2">
-            ${isPending(topic) ? `<button onclick="confirmNewSchedule('${topic.id}')" class="text-xs text-orange-600 border border-orange-300 bg-orange-50 rounded-lg px-3 py-1.5 hover:bg-orange-100 transition-colors font-medium">确认新排期</button>` : ''}
-            <button onclick="editMode=false;renderEditPage()" class="text-xs text-coffee-light border border-beige-300 rounded-lg px-4 py-1.5 hover:bg-beige-100 transition-colors">完成编辑</button>
-          </div>
-        </div>`;
-
-      // 标题编辑
-      html += `<div class="mb-4">
-        <label class="text-xs text-coffee-light mb-1 block">标题</label>
-        <input value="${escapeHtml(topic.title)}" onchange="commitTitle('${topic.id}',this.value)" class="text-lg font-bold text-coffee border border-beige-300 rounded px-2 py-1 bg-white w-full">
-      </div>`;
-
-      // 分类切换
-      html += `<div class="mb-4">
-        <label class="text-xs text-coffee-light mb-1 block">分类</label>
-        <div class="flex gap-1.5">${CATEGORIES.map(c => `<button onclick="selectCategory('${topic.id}','${c}')" class="text-xs px-2.5 py-1 rounded-full border transition-colors ${topic.category===c?'bg-brand text-white border-brand':'border-beige-300 text-coffee-light hover:border-brand/50'}">${c}</button>`).join('')}</div>
-      </div>`;
-
-      // 发布日期 + 按钮
-      html += `<div class="flex items-center gap-3 flex-wrap mb-4">
+      <p class="text-xs text-coffee-light">选择开始、结束日期；同日安排只需选择一天。拖动色块只移动该节点，拍摄分段可单独调整。</p>
+      <div class="space-y-2">`;
+    steps.forEach((step, idx) => {
+      const ranges = getStepRanges(step), multi = ranges.length > 1;
+      const duration = ranges.length ? calculateStepDuration(step) + '天' : '未安排';
+      html += `<div id="step-row-${idx}" data-step-idx="${idx}" class="wf-row border border-beige-200 rounded-xl p-3 space-y-2" ondragover="stepDragOver(event)" ondrop="stepDrop(event,'${topic.id}',${idx})" ondragend="stepDragEnd(event)">
         <div class="flex items-center gap-2">
-          <label class="text-xs text-coffee-light">发布日期</label>
-          <input type="date" value="${pubDate}" onchange="updatePublishDate('${topic.id}',this.value)" class="text-sm border border-beige-200 rounded-lg px-3 py-1.5 bg-beige-50 text-coffee">
-          <button onclick="setPublishDateTBD('${topic.id}')" class="text-xs ${pubDate?'text-coffee-light border border-beige-300':'text-orange-500 border border-orange-300 bg-orange-50'} rounded-lg px-2 py-1.5 hover:bg-orange-50 transition-colors">未定</button>
+          <span draggable="true" ondragstart="stepDragStart(event,'${topic.id}',${idx})" class="cursor-grab px-1 text-coffee-light" title="拖动调整显示顺序">⠿</span>
+          <input type="checkbox" aria-label="${escapeHtml(step.name)} 已完成" ${step.done ? 'checked' : ''} onchange="toggleStep('${topic.id}',${idx})" class="w-4 h-4 accent-[#38A169]">
+          <span class="w-2 h-2 rounded-full" style="background:${step.color}"></span>
+          <input aria-label="${escapeHtml(step.name)} 节点名称" value="${escapeHtml(step.name)}" onchange="updateStepName('${topic.id}',${idx},this.value)" class="text-sm font-medium flex-1 min-w-0 bg-transparent rounded px-1 py-1 ${step.done ? 'line-through text-coffee-light' : ''}">
+          <span id="step-duration-${idx}" class="text-xs text-coffee-light">${duration}</span>
+          <button aria-label="上移${escapeHtml(step.name)}顺序" onclick="moveStepOrder('${topic.id}',${idx},-1)" ${idx === 0 ? 'disabled' : ''} class="editor-button">↑</button>
+          <button aria-label="下移${escapeHtml(step.name)}顺序" onclick="moveStepOrder('${topic.id}',${idx},1)" ${idx === steps.length - 1 ? 'disabled' : ''} class="editor-button">↓</button>
         </div>
-        <button onclick="openTmlModal('${topic.id}')" class="text-xs text-brand border border-brand/40 rounded-lg px-3 py-1.5 hover:bg-brand hover:text-white transition-colors">粘贴 TML</button>
-        ${topic.completed
-          ? `<button onclick="uncompleteProject('${topic.id}')" class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5 hover:bg-green-100 transition-colors">撤回完成</button>`
-          : `<button onclick="completeProject('${topic.id}')" class="text-xs text-brand border border-brand/40 rounded-lg px-3 py-1.5 hover:bg-brand hover:text-white transition-colors">标记完成</button>`
-        }
-        <button onclick="exportTml('${topic.id}')" class="text-xs text-coffee-light border border-beige-300 rounded-lg px-3 py-1.5 hover:bg-beige-100 transition-colors">导出 TML</button>
-      </div>`;
-
-      // 前置准备（可编辑）
-      html += `<div class="mb-4">
-        <h4 class="text-xs text-coffee-light mb-2">前置准备 · 可编辑</h4>
-        <div class="flex items-center gap-2 mb-2">
-          <input id="prep-input-${topic.id}" type="text" placeholder="增加项目备注" class="todo-input flex-1 text-sm border border-beige-200 rounded-lg px-3 py-2 bg-beige-50 text-coffee placeholder-coffee-light/50" onkeydown="if(event.key==='Enter'){addPrepFromInput('${topic.id}')}">
-          <button onclick="addPrepFromInput('${topic.id}')" class="w-9 h-9 bg-brand text-white rounded-lg flex items-center justify-center hover:bg-brand-dark transition-colors flex-shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg></button>
-        </div>`;
-      if (!tasks.length) {
-        html += `<p class="text-xs text-coffee-light text-center py-2">暂无前置任务</p>`;
-      } else {
-        tasks.forEach((task, idx) => {
-          html += `<div class="flex items-center gap-2 group mb-1">
-            <input type="checkbox" ${task.done?'checked':''} onchange="togglePrep('${topic.id}',${idx})" class="w-4 h-4 rounded accent-[#B37D56]">
-            <input value="${escapeHtml(task.text)}" onchange="updatePrepText('${topic.id}',${idx},this.value)" class="flex-1 text-sm ${task.done?'line-through text-coffee-light':'text-coffee'} border-none bg-transparent">
-            <button onclick="deletePrep('${topic.id}',${idx})" class="opacity-0 group-hover:opacity-100 p-0.5 text-coffee-light hover:text-red-500 transition-all"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-          </div>`;
-        });
-      }
-      html += `</div>`;
-
-      // 发布平台（可切换）
-      html += `<div class="mb-4">
-        <h4 class="text-xs text-coffee-light mb-2">发布平台</h4>
-        <div class="flex flex-wrap gap-1.5">${PLATFORMS.map(p => `<button onclick="togglePlatform('${topic.id}','${p}')" class="text-xs px-2 py-1 rounded-full border transition-colors ${plats.includes(p)?'bg-brand text-white border-brand':'border-beige-300 text-coffee-light hover:border-brand/50'}">${p}</button>`).join('')}</div>
-      </div>`;
-
-      // 通告绑定
-      if (!cb.shootStart && !cb.location) {
-        html += `<div class="mb-4"><button onclick="openCanboxLink('${topic.id}')" class="text-xs text-brand border border-brand rounded-lg px-3 py-1.5 hover:bg-brand hover:text-white transition-colors">绑定通告</button></div>`;
-      } else {
-        html += `<div class="mb-4 flex items-center gap-2">
-          <span class="text-xs text-coffee-light">通告已绑定</span>
-          <button onclick="unlinkCanbox('${topic.id}')" class="text-xs text-red-500 hover:text-red-700">解除绑定</button>
-          ${hasShootDates ? `<button onclick="importShootDates('${topic.id}')" class="text-xs text-brand border border-brand/40 rounded px-2 py-0.5 hover:bg-brand hover:text-white transition-colors">引入拍摄段时间</button>` : ''}
-        </div>`;
-      }
-
-      // 制作流程（可编辑）
-      html += `<div class="mb-4">
-        <h4 class="text-xs text-coffee-light mb-2">制作流程 · 可编辑</h4>
-        <div class="space-y-1">`;
-      steps.forEach((step, idx) => {
-        const isCleared = step.cleared;
-        const isC = !isCleared && conflict.hasConflict && conflict.stepKey === step.key;
-        const isRange = !isCleared && step.startDate !== (step.endDate || step.startDate);
-        html += `<div class="wf-row flex items-center gap-2 py-1.5 px-2 rounded group ${isCleared?'cleared':''} ${isC?'bg-danger-bg':''}" data-step-idx="${idx}" draggable="true" ondragstart="stepDragStart(event,'${topic.id}',${idx})" ondragover="stepDragOver(event)" ondrop="stepDrop(event,'${topic.id}',${idx})" ondragend="stepDragEnd(event)">
-          <span class="cursor-grab text-coffee-light hover:text-coffee select-none px-0.5 flex-shrink-0">⠿</span>
-          <input type="checkbox" ${step.done?'checked':''} onchange="toggleStep('${topic.id}',${idx})" class="w-4 h-4 rounded accent-[#38A169]">
-          <span class="text-sm ${step.done?'line-through ':''}${isCleared?'text-coffee-light/60':'text-coffee'} w-20 flex-shrink-0 truncate">${step.name}</span>
-          ${isCleared
-            ? `<span class="text-xs text-coffee-light flex-1">未安排</span><button onclick="restoreStep('${topic.id}',${idx})" class="text-xs text-brand border border-brand/30 rounded px-2 py-0.5 hover:bg-brand hover:text-white transition-colors">安排日期</button>`
-            : `<input type="date" value="${step.startDate}" onchange="updateStepDate('${topic.id}',${idx},'startDate',this.value)" class="text-xs border border-beige-200 rounded px-1.5 py-0.5 bg-white ${isC?'text-danger-text font-medium':step.delayed?'text-orange-600':'text-coffee-light'}" style="width:110px">
-              <span class="text-xs text-beige-300">~</span>
-              <input type="date" value="${step.endDate||step.startDate}" onchange="updateStepDate('${topic.id}',${idx},'endDate',this.value)" class="text-xs border border-beige-200 rounded px-1.5 py-0.5 bg-white ${isC?'text-danger-text font-medium':step.delayed?'text-orange-600':'text-coffee-light'}" style="width:110px">
-              <span class="text-xs ${isRange?'text-brand':'text-beige-300'} w-10 text-right">${isRange?daysBetween(step.startDate,step.endDate||step.startDate)+'天':''}</span>
-              <button onclick="delayStep('${topic.id}',${idx},1)" class="opacity-0 group-hover:opacity-100 p-0.5 text-coffee-light hover:text-orange-500 transition-all" title="延期1天"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></button>
-              <button onclick="clearStep('${topic.id}',${idx})" class="opacity-0 group-hover:opacity-100 p-0.5 text-coffee-light hover:text-orange-500 transition-all" title="清除"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg></button>`
-          }
-          <button onclick="deleteStep('${topic.id}','${step.key}')" class="opacity-0 group-hover:opacity-100 p-0.5 text-coffee-light hover:text-red-500 transition-all" title="删除"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+        <div class="space-y-2">`;
+      (ranges.length ? ranges : [{ start: '', end: '' }]).forEach((range, rangeIdx) => {
+        const base = escapeHtml(step.name) + (multi ? ' 第' + (rangeIdx + 1) + '段' : '');
+        const startCall = multi ? `updateStepSegmentDate('${topic.id}',${idx},${rangeIdx},'start',this.value)` : `updateStepDate('${topic.id}',${idx},'startDate',this.value)`;
+        const endCall = multi ? `updateStepSegmentDate('${topic.id}',${idx},${rangeIdx},'end',this.value)` : `updateStepDate('${topic.id}',${idx},'endDate',this.value)`;
+        html += `<div class="flex items-end gap-2 flex-wrap">
+          <label class="date-label">${step.key === 'publish' ? '日期' : multi ? '第' + (rangeIdx + 1) + '段开始' : '开始'}<input id="step-start-${idx}${rangeIdx ? '-' + rangeIdx : ''}" type="date" aria-label="${base} ${step.key === 'publish' ? '日期' : '开始'}" data-schedule-date data-step="${idx}" data-range="${rangeIdx}" data-field="start" value="${range.start}" onchange="${startCall}" class="date-input"></label>
+          ${step.key !== 'publish' ? `<label class="date-label">结束<input id="step-end-${idx}-${rangeIdx}" type="date" aria-label="${base} 结束" data-schedule-date data-step="${idx}" data-range="${rangeIdx}" data-field="end" value="${range.end}" onchange="${endCall}" class="date-input"></label>` : ''}
+          ${multi ? `<button onclick="deleteShootSegment('${topic.id}',${idx},${rangeIdx})" class="editor-button" aria-label="移除${base}">移除此段</button>` : ''}
         </div>`;
       });
-      html += `<button onclick="addCustomStep('${topic.id}')" class="mt-2 flex items-center gap-1.5 text-xs text-brand hover:text-brand-dark transition-colors">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>添加工序</button></div></div>`;
-
-      // TML 便签（可编辑）
-      if (topic.tmlNote) {
-        html += `<div class="mb-4">
-          <div class="flex items-center justify-between mb-1">
-            <h4 class="text-xs text-coffee-light">TML 记录</h4>
-            <div class="flex items-center gap-2">
-              <button onclick="reparseTml('${topic.id}')" class="text-xs text-brand border border-brand/30 rounded px-2 py-0.5 hover:bg-brand hover:text-white transition-colors">重新识别</button>
-              <button onclick="editTmlNote('${topic.id}')" class="text-xs text-brand hover:text-brand-dark">编辑</button>
-            </div>
-          </div>
-          <div id="tml-note-display" class="bg-[#FFFDF5] border border-[#F0E6D0] rounded-lg p-3 text-sm text-coffee whitespace-pre-wrap font-mono leading-relaxed cursor-pointer" onclick="editTmlNote('${topic.id}')">${escapeHtml(topic.tmlNote)}</div>
-        </div>`;
-      }
-
-      html += `<div class="border-t border-beige-200 pt-3 mt-2">
-        <button onclick="deleteTopic('${topic.id}')" class="text-xs text-red-400 border border-dashed border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors">删除选题</button>
+      html += `</div><div class="flex gap-2 flex-wrap">
+        <button data-needs-date onclick="delayStep('${topic.id}',${idx},-1)" ${ranges.length ? '' : 'disabled'} class="editor-button" aria-label="${escapeHtml(step.name)} 前移一天">前移一天</button>
+        <button data-needs-date onclick="delayStep('${topic.id}',${idx},1)" ${ranges.length ? '' : 'disabled'} class="editor-button" aria-label="${escapeHtml(step.name)} 后移一天">后移一天</button>
+        <button data-needs-date onclick="clearStep('${topic.id}',${idx})" ${ranges.length ? '' : 'disabled'} class="editor-button" aria-label="清空${escapeHtml(step.name)}日期">清空日期</button>
+        <button onclick="deleteStep('${topic.id}','${step.key}')" class="editor-button text-red-500" aria-label="删除${escapeHtml(step.name)}节点">删除节点</button>
       </div>`;
-
-      html += `</div>`; // 编辑态结束
+      if (step.key === 'shoot') html += `<div class="flex items-end gap-2 flex-wrap pt-1">
+        <label class="date-label">新增拍摄段<input type="date" id="new-segment-${idx}" data-draft aria-label="新增拍摄段日期" class="date-input"></label>
+        <button onclick="addShootSegment('${topic.id}',${idx})" class="editor-button">添加拍摄段</button>
+      </div>`;
+      html += '</div>';
+    });
+    html += `</div>
+      <form onsubmit="event.preventDefault();addCustomStep('${topic.id}')" class="flex gap-2">
+        <input id="new-step-name" data-draft aria-label="新工序名称" placeholder="新工序名称，如：审片、调色" class="min-w-0 flex-1 text-sm border border-beige-200 rounded-lg px-3 py-2">
+        <button class="editor-button">添加工序</button>
+      </form>
+    </section>
+    <section class="border-t border-beige-200 pt-4">
+      <h3 class="text-sm font-semibold mb-2">准备事项</h3>
+      <form onsubmit="event.preventDefault();addPrepFromInput('${topic.id}')" class="flex gap-2 mb-2">
+        <input id="prep-input-${topic.id}" data-draft aria-label="新增准备事项" placeholder="输入事项，回车添加" class="min-w-0 flex-1 text-sm border border-beige-200 rounded-lg px-3 py-2">
+        <button class="editor-button">添加事项</button>
+      </form>
+      ${tasks.map((task, idx) => `<div class="flex gap-2 items-center py-1">
+        <input type="checkbox" aria-label="完成准备事项${idx + 1}" ${task.done ? 'checked' : ''} onchange="togglePrep('${topic.id}',${idx})" class="w-4 h-4 accent-[#38A169]">
+        <input aria-label="准备事项${idx + 1}" value="${escapeHtml(task.text)}" oninput="updatePrepText('${topic.id}',${idx},this.value)" class="min-w-0 flex-1 text-sm px-2 py-1 ${task.done ? 'line-through' : ''}">
+        <button onclick="deletePrep('${topic.id}',${idx})" class="editor-button">删除</button></div>`).join('')}
+    </section>`;
+    if (cb) {
+      const segments = cb.shootSegments || cb.segments || detectShootSegments(cb.dates || []);
+      html += `<details class="border-t border-beige-200 pt-3"><summary class="text-sm cursor-pointer">已绑定拍摄通告 · 查看信息</summary>
+        <div class="text-xs space-y-2 mt-3"><p>通告拍摄：${segments.map(r => escapeHtml(r.start + (r.start === r.end ? '' : ' ~ ' + r.end))).join('，')}</p>
+        ${[['location','拍摄地'],['director','导演'],['photographer','摄影'],['production','制片'],['rd','研发'],['operational','运营'],['audio','收音'],['business','商务'],['advertiserNo','商单']].filter(([key]) => cb[key]).map(([key,label]) => `<p>${label}：${escapeHtml(cb[key])}</p>`).join('')}
+        <button onclick="importShootDates('${topic.id}')" class="editor-button">应用通告拍摄日期</button>
+        <button onclick="unlinkCanbox('${topic.id}')" class="editor-button">解除绑定</button></div></details>`;
     }
-
-    html += '</div>';
+    if (topic.tmlNote) html += `<details class="border-t border-beige-200 pt-3"><summary class="text-sm cursor-pointer">TML 原文</summary><pre id="tml-note-display" class="whitespace-pre-wrap text-xs mt-2">${escapeHtml(topic.tmlNote)}</pre><button onclick="editTmlNote('${topic.id}')" class="editor-button">编辑原文</button></details>`;
+    html += `<div class="border-t border-beige-200 pt-4 flex gap-2 flex-wrap">
+      <button onclick="openCanboxLink('${topic.id}')" class="editor-button">${cb ? '更换通告' : '绑定通告'}</button>
+      <button onclick="openTmlModal('${topic.id}')" class="editor-button">导入 TML</button>
+      <button onclick="exportTml('${topic.id}')" class="editor-button">下载 TML</button>
+      <button onclick="copyTml('${topic.id}')" class="editor-button">复制 TML</button>
+      <button onclick="${topic.completed ? 'uncompleteProject' : 'completeProject'}('${topic.id}')" class="editor-button text-green-700">${topic.completed ? '撤回完成' : '项目完成'}</button>
+      <button onclick="deleteTopic('${topic.id}')" class="editor-button text-red-500">删除项目</button>
+    </div>
+    <div id="history-container">${workflowHistoryHtml(topic)}</div>
+    <p class="time-meta">创建 ${shortTime(topic.createdAt)} · 修改 ${shortTime(topic.updatedAt)}</p>
+    </article>`;
     el.innerHTML = html;
-
-    if (editMode && editingTitleId) {
-      const input = document.getElementById('title-input-' + editingTitleId);
-      if (input) { input.focus(); input.select(); }
+    el.classList.toggle('workflow-compact', workbenchCompact);
+    Object.entries(drafts).forEach(([id, value]) => { const input = document.getElementById(id); if (input) input.value = value; });
+    document.getElementById('back-to-calendar').lastChild.textContent = workbenchReturn.view === 'card' ? '返回选题卡' : '返回日历';
+    renderedTopicId = topic.id;
+    if (!ganttStartDate) initGanttRange();
+    refreshScheduleViews();
+    if (focused) {
+      const input = document.getElementById(focused); input?.focus({ preventScroll: true });
+      if (selection?.[0] !== null) { try { input?.setSelectionRange(...selection); } catch {} }
     }
-
-    renderProjectCalendar();
   }
 
   // ── 交互函数 ──
   function startEditTitle(id) { editingTitleId = id; renderEditPage(); }
   function commitTitle(id, value) {
     const t = appState.topics.find(t => t.id === id);
-    if (t && value.trim()) { t.title = value.trim(); markUpdated(t); saveData(); }
+    if (t) { const from = t.title; t.title = value.trim() || '新选题'; if (from !== t.title) { markUpdated(t); saveData(); logAction('topic.update', id, { field: 'title', from, to: t.title }); } }
     editingTitleId = null; renderTopicList();
   }
   function toggleCategory(topicId) {
@@ -1842,7 +1769,7 @@
   }
   function selectCategory(topicId, cat) {
     const t = appState.topics.find(t => t.id === topicId);
-    if (t) { t.category = cat; markUpdated(t); saveData(); }
+    if (t) { const from = t.category; t.category = cat; markUpdated(t); saveData(); logAction('topic.update', topicId, { field: 'category', from, to: cat }); }
     closeCategory(); renderAll();
   }
   function closeCategory() { document.getElementById('category-dropdown').classList.add('hidden'); openCategoryTopicId = null; document.removeEventListener('click', closeCategoryOnOutside); }
@@ -1852,7 +1779,7 @@
     const t = appState.topics.find(t => t.id === id); if (!t) return;
     if (!confirm('解除与通告的绑定？')) return;
     delete t.canboxImport; delete t.canboxLink;
-    markUpdated(t); saveData(); renderAll();
+    markUpdated(t); saveData(); logAction('canbox.unbind', id); renderAll();
   }
   function openCanboxLink(id) {
     selectedTopicId = id;
@@ -1860,55 +1787,32 @@
   }
   function updatePublishDate(id, value) {
     const t = appState.topics.find(t => t.id === id); if (!t) return;
-    t.publishDate = value;
-    // 只同步「发布」节点，其余工序日期不动
-    if ((t.productionSteps || []).length) {
-      const pub = t.productionSteps.find(s => s.key === 'publish');
-      if (pub) {
-        pub.startDate = value || '';
-        pub.endDate = value || '';
-        pub.duration = value ? 1 : 0;
-        pub.cleared = !value; // 空日期回退到「未安排」
-      }
-    } else if (value) {
-      // 无工序且有日期时，初始化全部节点为未安排，仅设发布节点
-      t.productionSteps = getStepDefs().map(def => ({
-        key: def.key, name: def.name, startDate: '', endDate: '',
-        duration: def.duration, color: def.color, done: false, cleared: true
-      }));
-      const pub = t.productionSteps.find(s => s.key === 'publish');
-      if (pub) { pub.startDate = value; pub.endDate = value; pub.duration = 1; pub.cleared = false; }
-    }
-    markUpdated(t); saveData(); renderAll();
+    const needsRow = !t.productionSteps.some(s => s.key === 'publish') && !!value;
+    changeSchedule(t, () => setPublishDate(t, value), { field: 'publishDate', value }, needsRow);
   }
   function setPublishDateTBD(id) {
     const t = appState.topics.find(t => t.id === id); if (!t) return;
-    t.publishDate = '';
-    // 同步把发布节点设为「未安排」
-    const pub = (t.productionSteps || []).find(s => s.key === 'publish');
-    if (pub) { pub.startDate = ''; pub.endDate = ''; pub.duration = 0; pub.cleared = true; }
-    markUpdated(t); saveData(); renderAll();
-    showToast('发布日期已设为未定', 'info');
+    changeSchedule(t, () => setPublishDate(t, ''), { field: 'publishDate', value: '' });
   }
 
   function markProjectPending(id) {
     const t = appState.topics.find(t => t.id === id); if (!t) return;
-    const reason = prompt('变动原因（可选）：\n如：拍摄延期 / 场地未定 / 客户调整', '');
-    if (reason === null) return; // 用户取消
+    const reason = document.getElementById('pending-reason')?.value.trim() || '';
     t.projectStatus = 'pending';
     t.pendingReason = reason || '';
     t.pendingAt = nowISO();
-    markDirty(id); saveData(); logAction('topic.pending', id, { reason }); renderAll();
+    markUpdated(t); saveData(); logAction('topic.pending', id, { reason }); renderAll();
     showToast(`「${t.title}」已标记为变动中`, 'warn');
   }
 
   function confirmNewSchedule(id) {
     const t = appState.topics.find(t => t.id === id); if (!t) return;
-    if (!confirm('确认新排期？将清除变动状态。')) return;
+    if (!PocketWorkflow.stats(t).scheduled) { showToast('请先安排至少一个节点日期', 'warn'); return; }
+    t.scheduleConfirmed = true;
     t.projectStatus = 'normal';
     delete t.pendingReason;
     delete t.pendingAt;
-    markDirty(id); saveData(); logAction('topic.resolved', id); renderAll();
+    markUpdated(t); saveData(); logAction('topic.resolved', id); renderAll();
     showToast(`「${t.title}」排期已确认`, 'success');
   }
 
@@ -1922,132 +1826,74 @@
     if (!t.preparationTasks) t.preparationTasks = [];
     t.preparationTasks.push({ id: 'prep_' + Date.now(), text, done: false });
     input.value = '';
-    markUpdated(t); saveData(); renderEditPage();
+    markUpdated(t); saveData(); logAction('prep.add', id, { text }); renderEditPage();
   }
-  function togglePrep(id, idx) { const t = appState.topics.find(t => t.id === id); if (t && t.preparationTasks[idx]) { t.preparationTasks[idx].done = !t.preparationTasks[idx].done; markUpdated(t); saveData(); renderEditPage(); } }
-  function updatePrepText(id, idx, value) { const t = appState.topics.find(t => t.id === id); if (t && t.preparationTasks[idx]) { t.preparationTasks[idx].text = value; markUpdated(t); saveData(); } }
+  function togglePrep(id, idx) { const t = appState.topics.find(t => t.id === id); if (t && t.preparationTasks[idx]) { t.preparationTasks[idx].done = !t.preparationTasks[idx].done; markUpdated(t); saveData(); logAction('prep.toggle', id, { taskId: t.preparationTasks[idx].id, done: t.preparationTasks[idx].done }); renderEditPage(); } }
+  function updatePrepText(id, idx, value) { const t = appState.topics.find(t => t.id === id); if (t && t.preparationTasks[idx]) { const from = t.preparationTasks[idx].text; t.preparationTasks[idx].text = value; markUpdated(t); saveData(); logAction('prep.update', id, { taskId: t.preparationTasks[idx].id, from, to: value }); } }
   function deletePrep(id, idx) {
     const t = appState.topics.find(t => t.id === id);
     if (!t || !t.preparationTasks[idx]) return;
     if (!confirm(`删除「${t.preparationTasks[idx].text || '此项'}」？`)) return;
+    const removed = t.preparationTasks[idx];
     t.preparationTasks.splice(idx, 1);
-    markUpdated(t); saveData(); renderEditPage();
-  }
-  function canCheckStep(steps, idx) {
-    for (let i = 0; i < idx; i++) {
-      if (!steps[i].done && !steps[i].cleared) return steps[i].name;
-    }
-    return null;
+    markUpdated(t); saveData(); logAction('prep.delete', id, { taskId: removed?.id, text: removed?.text }); renderEditPage();
   }
   function toggleStep(id, idx) {
-    const t = appState.topics.find(t => t.id === id);
-    if (!t || !t.productionSteps[idx]) return;
-    if (!t.productionSteps[idx].done) {
-      const blocker = canCheckStep(t.productionSteps, idx);
-      if (blocker) { alert(`请先完成「${blocker}」`); return; }
-    }
-    t.productionSteps[idx].done = !t.productionSteps[idx].done;
-    markUpdated(t); saveData();
-    logAction('step.toggle', id, { step: t.productionSteps[idx].name, done: t.productionSteps[idx].done });
-    // 自动检测项目完成
-    if (t.productionSteps[idx].done && isProjectComplete(t)) {
-      if (confirm(`所有工序已完成，是否标记项目「${t.title}」完成？`)) completeProject(id);
-      else renderAll();
-    } else {
-      renderAll();
-    }
+    const t = appState.topics.find(t => t.id === id), step = t?.productionSteps[idx];
+    if (!step) return;
+    step.done = !step.done;
+    if (!step.done && t.completed) { t.completed = false; delete t.completedAt; }
+    markUpdated(t); saveData(); logAction('step.toggle', id, { step: step.name, done: step.done });
+    renderAll();
   }
   function toggleStepByKey(id, stepKey) {
     const t = appState.topics.find(t => t.id === id); if (!t) return;
-    const idx = t.productionSteps.findIndex(s => s.key === stepKey);
-    if (idx < 0) return;
-    if (!t.productionSteps[idx].done) {
-      const blocker = canCheckStep(t.productionSteps, idx);
-      if (blocker) { alert(`请先完成「${blocker}」`); return; }
-    }
-    t.productionSteps[idx].done = !t.productionSteps[idx].done;
-    markUpdated(t); saveData();
-    if (t.productionSteps[idx].done && isProjectComplete(t)) {
-      if (confirm(`所有工序已完成，是否标记项目「${t.title}」完成？`)) completeProject(id);
-      else renderAll();
-    } else {
-      renderAll();
-    }
+    toggleStep(id, t.productionSteps.findIndex(s => s.key === stepKey));
+  }
+  function updateStepName(id, index, value) {
+    const topic = appState.topics.find(t => t.id === id), step = topic?.productionSteps[index];
+    if (!step || !value.trim()) { renderAll(); return; }
+    step.name = value.trim(); markUpdated(topic); saveData();
+    logAction('step.update', id, { action: 'rename', key: step.key, name: step.name }); renderAll();
   }
   function deleteStep(id, stepKey) {
-    const t = appState.topics.find(t => t.id === id); if (!t) return;
-    const step = t.productionSteps.find(s => s.key === stepKey);
-    if (!step || !confirm(`删除工序「${step.name}」？`)) return;
-    t.productionSteps = t.productionSteps.filter(s => s.key !== stepKey);
-    markUpdated(t); saveData(); logAction('step.delete', id, { step: step.name }); renderAll();
+    const topic = appState.topics.find(t => t.id === id), step = topic?.productionSteps.find(s => s.key === stepKey);
+    if (!step) return;
+    changeSchedule(topic, () => {
+      topic.productionSteps = topic.productionSteps.filter(s => s.key !== stepKey);
+      if (stepKey === 'publish') topic.publishDate = '';
+    }, { action: 'delete', step: step.name });
+    showToast('工序已删除，可点击“撤销排期修改”恢复', 'info');
   }
   function clearStep(id, idx) {
-    const t = appState.topics.find(t => t.id === id); if (!t || !t.productionSteps[idx]) return;
-    const step = t.productionSteps[idx];
-    step.cleared = true;
-    step._prevStart = step.startDate;
-    step._prevEnd = step.endDate;
-    step.startDate = '';
-    step.endDate = '';
-    markUpdated(t); saveData(); logAction('step.clear', id, { step: step.name }); renderAll();
+    const topic = appState.topics.find(t => t.id === id), step = topic?.productionSteps[idx];
+    if (!step) return;
+    changeSchedule(topic, () => PocketSchedule.clear(step), { action: 'clear', step: step.name });
   }
   function restoreStep(id, idx) {
-    const t = appState.topics.find(t => t.id === id); if (!t || !t.productionSteps[idx]) return;
-    const step = t.productionSteps[idx];
-    // 设置一个默认日期：发布日前 offset 天，或今天+3天
-    const defaultDate = t.publishDate ? addDays(t.publishDate, -3) : addDays(todayStr(), 3);
-    step.cleared = false;
-    step.startDate = step._prevStart || defaultDate;
-    step.endDate = step._prevEnd || step.startDate;
-    delete step._prevStart;
-    delete step._prevEnd;
-    markUpdated(t); saveData(); logAction('step.restore', id, { step: step.name }); renderAll();
+    selectTopic(id);
+    const input = document.getElementById('step-start-' + idx);
+    if (input) { input.focus(); try { input.showPicker(); } catch {} }
   }
   const CUSTOM_STEP_COLORS = ['#D4A574','#A3D9A5','#A5C8E1','#F2D98B','#E8C97A','#C8A2E8','#D9A5E1','#E1A5A5','#B8D4E3','#85CDCA','#E8A87C','#7EB5C4'];
   function addCustomStep(id) {
-    const t = appState.topics.find(t => t.id === id); if (!t) return;
-    const name = prompt('输入工序名称：');
-    if (!name || !name.trim()) return;
-    const existingKeys = t.productionSteps.map(s => s.key);
-    const usedColors = t.productionSteps.map(s => s.color);
-    const color = CUSTOM_STEP_COLORS.find(c => !usedColors.includes(c)) || CUSTOM_STEP_COLORS[existingKeys.length % CUSTOM_STEP_COLORS.length];
-    const key = 'custom_' + Date.now();
-    const pubDate = t.publishDate || todayStr();
-    // 插入到发布工序之前
-    const pubIdx = t.productionSteps.findIndex(s => s.key === 'publish');
-    const insertIdx = pubIdx >= 0 ? pubIdx : t.productionSteps.length;
-    const newStep = { key, name: name.trim(), startDate: pubDate, endDate: pubDate, duration: 1, color, done: false };
-    t.productionSteps.splice(insertIdx, 0, newStep);
-    // 重排日期
-    if (t.publishDate) {
-      let cursor = t.publishDate;
-      for (let i = t.productionSteps.length - 1; i >= 0; i--) {
-        const s = t.productionSteps[i];
-        const dur = Math.max(0, Math.ceil(s.duration || 1) - 1);
-        const end = cursor;
-        const start = (s.duration === 0) ? end : addDays(end, -dur);
-        s.startDate = start; s.endDate = end;
-        cursor = addDays(start, -1);
-      }
-    }
-    markUpdated(t); saveData(); logAction('step.add', id, { name: name.trim() }); renderAll();
+    const topic = appState.topics.find(t => t.id === id), input = document.getElementById('new-step-name');
+    const name = input?.value.trim(); if (!topic || !name) { input?.focus(); return; }
+    changeSchedule(topic, () => {
+      const used = topic.productionSteps.map(s => s.color);
+      const color = CUSTOM_STEP_COLORS.find(c => !used.includes(c)) || '#B8D4E3';
+      const def = { key: 'custom_' + Date.now(), name, color, duration: 1 };
+      const publishIndex = topic.productionSteps.findIndex(s => s.key === 'publish');
+      topic.productionSteps.splice(publishIndex < 0 ? topic.productionSteps.length : publishIndex, 0, PocketSchedule.blankSteps([def])[0]);
+    }, { action: 'add', name });
+    const next = document.getElementById('new-step-name'); if (next) { next.value = ''; next.focus(); }
   }
   function importShootDates(id) {
-    const t = appState.topics.find(t => t.id === id);
-    if (!t || !t.canboxImport) return;
-    const cb = t.canboxImport;
-    if (!cb.shootStart || !cb.shootEnd) return;
-    const shootStep = (t.productionSteps || []).find(s => s.key === 'shoot');
-    if (!shootStep) { alert('未找到拍摄工序'); return; }
-    shootStep.startDate = cb.shootStart;
-    shootStep.endDate = cb.shootEnd;
-    shootStep.duration = daysBetween(cb.shootStart, cb.shootEnd) + 1;
-    markUpdated(t); saveData();
-    // 确保所有视图都刷新
-    renderTopicList();
-    renderTopicSummaries();
-    renderProjectCalendar();
-    renderEditPage();
+    const topic = appState.topics.find(t => t.id === id); if (!topic?.canboxImport) return;
+    const cb = topic.canboxImport;
+    const ranges = cb.shootSegments || cb.segments || detectShootSegments(cb.dates || []);
+    if (!ranges.length) { showToast('通告中没有有效拍摄日期', 'warn'); return; }
+    openScheduleReview(topic, { shoot: { name: topic.productionSteps.find(s=>s.key==='shoot')?.name || '拍摄', color:'#A5C8E1', ranges } }, {title:'应用通告拍摄日期 · 变更预览', source:'canbox'});
   }
   function togglePlatform(id, platform) {
     const t = appState.topics.find(t => t.id === id);
@@ -2055,25 +1901,20 @@
     if (!t.platforms) t.platforms = [];
     const idx = t.platforms.indexOf(platform);
     if (idx >= 0) t.platforms.splice(idx, 1); else t.platforms.push(platform);
-    markUpdated(t); saveData(); renderAll();
+    markUpdated(t); saveData(); logAction('topic.update', id, { field: 'platforms', value: t.platforms }); renderAll();
   }
   function updateStepDate(id, idx, field, value) {
-    const t = appState.topics.find(t => t.id === id); if (!t || !t.productionSteps[idx]) return;
-    const step = t.productionSteps[idx];
-    step[field] = value;
-    if (step.cleared) step.cleared = false;
-    if (step.endDate < step.startDate) step.endDate = step.startDate;
-    markUpdated(t); saveData(); renderEditPage();
+    const topic = appState.topics.find(t => t.id === id), step = topic?.productionSteps[idx];
+    if (!step) return;
+    changeSchedule(topic, () => PocketSchedule.updateDate(step, field, value), { step: step.name, field, value }, false);
   }
-  function rescheduleTopic(id) {
-    const t = appState.topics.find(t => t.id === id);
-    if (!t || !t.publishDate) return;
-    if (!confirm('重新倒排将重置所有工序日期，已完成状态保留。继续？')) return;
-    const doneMap = {}; (t.productionSteps || []).forEach(s => { doneMap[s.key] = s.done; });
-    t.productionSteps = reverseSchedule(t.publishDate);
-    t.productionSteps.forEach(s => { if (doneMap[s.key]) s.done = true; });
-    markUpdated(t); saveData(); renderAll();
+
+  function updateStepSegmentDate(id, idx, segmentIdx, field, value) {
+    const topic = appState.topics.find(t => t.id === id), step = topic?.productionSteps[idx];
+    if (!step) return;
+    changeSchedule(topic, () => PocketSchedule.updateSegment(step, segmentIdx, field, value), { step: step.name, segment: segmentIdx, field, value }, false);
   }
+
 
   // ── 工序拖拽排序 (R06) ──
   let stepDragIdx = null;
@@ -2091,28 +1932,15 @@
     e.currentTarget.style.borderTop = '2px solid #B37D56';
   }
   function stepDrop(e, topicId, targetIdx) {
-    e.preventDefault();
-    e.currentTarget.style.borderTop = '';
-    if (stepDragIdx === null || stepDragIdx === targetIdx || !stepDragTopicId) return;
-    const t = appState.topics.find(t => t.id === stepDragTopicId);
-    if (!t) return;
-    const [moved] = t.productionSteps.splice(stepDragIdx, 1);
-    t.productionSteps.splice(targetIdx, 0, moved);
-    // 按新顺序重算日期，以 publishDate 为锚点倒排，保留已有工序（不还原已删除的）
-    if (t.publishDate && t.productionSteps.length) {
-      let cursor = t.publishDate;
-      for (let i = t.productionSteps.length - 1; i >= 0; i--) {
-        const s = t.productionSteps[i];
-        const dur = Math.max(0, Math.ceil(s.duration || 1) - 1);
-        const end = cursor;
-        const start = (s.duration === 0) ? end : addDays(end, -dur);
-        s.startDate = start;
-        s.endDate = end;
-        cursor = addDays(start, -1);
-      }
-    }
-    markUpdated(t); saveData(); logAction('step.reorder', t.id, { from: stepDragIdx, to: targetIdx });
-    renderAll();
+    e.preventDefault(); e.currentTarget.style.borderTop = '';
+    if (stepDragIdx === null || stepDragIdx === targetIdx || stepDragTopicId !== topicId) return;
+    const topic = appState.topics.find(t => t.id === topicId); if (!topic) return;
+    const from = stepDragIdx;
+    changeSchedule(topic, () => {
+      const [moved] = topic.productionSteps.splice(from, 1);
+      topic.productionSteps.splice(targetIdx, 0, moved);
+    }, { action: 'reorder', from, to: targetIdx });
+    stepDragIdx = null; stepDragTopicId = null;
   }
   function stepDragEnd(e) {
     stepDragIdx = null;
@@ -2127,12 +1955,10 @@
   let settingsDragIdx = null;
   function renderSettingsList() {
     const el = document.getElementById('settings-steps-list');
-    el.innerHTML = settingsDraft.map((s, i) => `<div class="settings-row flex items-center gap-2 p-2.5 rounded-lg border border-beige-200 bg-beige-50" draggable="false" data-idx="${i}">
-      <span class="cursor-grab text-coffee-light hover:text-coffee select-none px-0.5" onmousedown="settingsDragStart(event,${i})" title="拖拽排序">⠿</span>
+    el.innerHTML = settingsDraft.map((s, i) => `<div class="settings-row flex items-center gap-2 p-2.5 rounded-lg border border-beige-200 bg-beige-50" draggable="true" data-idx="${i}" ondragstart="settingsDragStart(event,${i})">
+      <span class="cursor-grab text-coffee-light hover:text-coffee select-none px-0.5" title="拖拽排序">⠿</span>
       <input type="color" value="${s.color}" onchange="settingsDraft[${i}].color=this.value" style="width:28px;height:28px;border:none;cursor:pointer;border-radius:4px">
       <input value="${escapeHtml(s.name)}" onchange="settingsDraft[${i}].name=this.value" class="text-sm font-medium text-coffee border border-beige-200 rounded px-2 py-1 bg-white flex-1">
-      <div class="flex items-center gap-1"><label class="text-xs text-coffee-light">偏移</label><input type="number" value="${s.offset}" onchange="settingsDraft[${i}].offset=+this.value" min="0" class="text-xs border border-beige-200 rounded px-2 py-1 bg-white w-14 text-center"><label class="text-xs text-coffee-light">天</label></div>
-      <div class="flex items-center gap-1"><label class="text-xs text-coffee-light">时长</label><input type="number" value="${s.duration}" onchange="settingsDraft[${i}].duration=+this.value" min="0" step="0.5" class="text-xs border border-beige-200 rounded px-2 py-1 bg-white w-14 text-center"><label class="text-xs text-coffee-light">天</label></div>
       <button onclick="settingsRemoveStep(${i})" class="p-1 text-coffee-light hover:text-red-500 flex-shrink-0"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
     </div>`).join('');
     // 绑定拖拽事件
@@ -2145,8 +1971,8 @@
   function settingsDragStart(e, idx) {
     settingsDragIdx = idx;
     const row = e.target.closest('.settings-row');
-    if (row) { row.setAttribute('draggable', 'true'); row.style.opacity = '0.5'; }
-    e.dataTransfer.effectAllowed = 'move';
+    if (row) row.style.opacity = '0.5';
+    if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(idx)); }
   }
   function settingsDragOver(e) { e.preventDefault(); e.currentTarget.style.borderColor = '#B37D56'; }
   function settingsDrop(e) {
@@ -2160,7 +1986,7 @@
   }
   function settingsDragEnd() {
     settingsDragIdx = null;
-    document.querySelectorAll('.settings-row').forEach(r => { r.style.opacity = ''; r.style.borderColor = ''; r.setAttribute('draggable', 'false'); });
+    document.querySelectorAll('.settings-row').forEach(r => { r.style.opacity = ''; r.style.borderColor = ''; });
   }
   function settingsAddStep() { settingsDraft.push({ key: 'step_' + Date.now(), name: '新工序', color: '#B8D4E3', offset: 1, duration: 1 }); renderSettingsList(); }
   function settingsRemoveStep(i) { if (settingsDraft.length <= 1) { alert('至少保留一个工序'); return; } settingsDraft.splice(i, 1); renderSettingsList(); }
@@ -2176,26 +2002,17 @@
     } catch (e) { showToast('生成失败', 'error'); }
   }
   function saveSettings() { appState.settings.stepDefs = settingsDraft; markSettingsDirty(); saveData(); closeSettings(); logAction('settings.save', null, { steps: settingsDraft.map(s => s.name) }); renderAll(); }
-  function settingsRescheduleAll() {
-    if (!confirm('确定要用当前工序设置重新倒排所有选题？')) return;
-    appState.topics.forEach(t => {
-      if (!t.publishDate) return;
-      const doneMap = {}; (t.productionSteps || []).forEach(s => { doneMap[s.key] = s.done; });
-      t.productionSteps = reverseSchedule(t.publishDate, settingsDraft);
-      t.productionSteps.forEach(s => { if (doneMap[s.key]) s.done = true; });
-      markUpdated(t);
-    });
-    appState.settings.stepDefs = settingsDraft; markSettingsDirty(); saveData(); closeSettings(); renderAll();
-  }
+
 
   // ── Canbox 导入 ──
   let canboxProjects = [];
   let canboxSelected = new Set();
+  let canboxPasswordSession = '';
 
   function openCanboxImport() {
     const cfg = appState.settings?.canbox || {};
     document.getElementById('canbox-url').value = cfg.url || '';
-    document.getElementById('canbox-password').value = cfg.password || '';
+    document.getElementById('canbox-password').value = canboxPasswordSession;
     document.getElementById('canbox-self-signed').checked = cfg.allowSelfSigned || false;
     document.getElementById('canbox-projects').classList.add('hidden');
     document.getElementById('canbox-status').textContent = '';
@@ -2214,18 +2031,18 @@
 
     if (!appState.settings.canbox) appState.settings.canbox = {};
     appState.settings.canbox.url = url;
-    appState.settings.canbox.password = password;
+    delete appState.settings.canbox.password;
+    canboxPasswordSession = password;
     appState.settings.canbox.allowSelfSigned = document.getElementById('canbox-self-signed').checked;
-    markSettingsDirty();
-    saveData();
-
     const status = document.getElementById('canbox-status');
     status.textContent = '正在连接...'; status.className = 'text-xs text-coffee-light';
 
     try {
+      const settingsRes = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(appState.settings) });
+      if (!settingsRes.ok) throw new Error('保存连接配置失败');
+      _settingsDirty = false;
       const apiUrl = `${url}/api/schedules`;
-      const proxyUrl = `/api/canbox/proxy?url=${encodeURIComponent(apiUrl)}${password ? '&password=' + encodeURIComponent(password) : ''}`;
-      const res = await fetch(proxyUrl);
+      const res = await fetch('/api/canbox/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: apiUrl, password }) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
@@ -2356,66 +2173,57 @@
       const p = canboxProjects[idx];
       if (!p) return;
 
-      const shootStart = p.dates[0];
-      const shootEnd = p.dates[p.dates.length - 1];
+      const shootSegments = (p.segments || detectShootSegments(p.dates)).map(s => ({ start: s.start, end: s.end, label: s.label || '' }));
+      if (!shootSegments.length) return;
+      const shootStart = shootSegments[0].start;
+      const shootEnd = shootSegments[shootSegments.length - 1].end;
       const platforms = p.platforms || [];
 
-      // 双锚点倒排：拍摄段 + 发布日
-      const steps = getStepDefs();
-      const shootDef = steps.find(s => s.key === 'shoot');
-      const shootIdx = steps.indexOf(shootDef);
-      let postDays = 0;
-      if (shootIdx >= 0) {
-        for (let i = shootIdx + 1; i < steps.length; i++) postDays += steps[i].duration || 1;
-      }
-      const publishDate = addDays(shootEnd, postDays + 1);
-      const productionSteps = anchorSchedule(shootStart, shootEnd, publishDate);
+      // 只应用通告已提供的拍摄日期。
+      const productionSteps = stepsFromCanbox(shootSegments);
+      const publishDate = productionSteps.find(s => s.key === 'publish')?.startDate || '';
 
       const topic = {
         id: genId(), title: p.name, category: p.type === '视频' ? '广告' : '内容',
         projectType: '商业项目', platforms: Array.isArray(platforms) ? platforms : [],
         publishDate, preparationTasks: [], productionSteps,
         createdAt: nowISO(), updatedAt: nowISO(),
-        canboxImport: { source: 'canbox', shootStart, shootEnd, dates: p.dates, segments: p.segments || null, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations }
+        canboxImport: { source: 'canbox', shootStart, shootEnd, dates: p.dates, shootSegments, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations }
       };
       appState.topics.push(topic);
+      markDirty(topic.id);
       imported++;
     });
 
     saveData(); renderAll();
     status.textContent = `已导入 ${imported} 个项目`; status.className = 'text-xs text-green-600';
     logAction('canbox.import', null, { count: imported });
-    setTimeout(() => { closeCanboxImport(); switchView('edit'); selectedTopicId = appState.topics[appState.topics.length - 1]?.id; renderAll(); }, 800);
+    closeCanboxImport();
+    if (imported) selectTopic(appState.topics[appState.topics.length - 1].id);
+    showToast(`已导入 ${imported} 个项目，已填写通告拍摄日期`, 'success');
   }
 
-  function bindCanboxSelected() {
+  function bindCanboxSelected(applyDates = true) {
     if (canboxSelected.size !== 1) { alert('请只选择一个通告进行绑定'); return; }
     const idx = [...canboxSelected][0];
     const p = canboxProjects[idx];
     const t = appState.topics.find(t => t.id === selectedTopicId);
     if (!t || !p) return;
 
-    const shootStart = p.dates[0];
-    const shootEnd = p.dates[p.dates.length - 1];
-    const hasExistingSteps = (t.productionSteps || []).length > 0;
-
-    if (hasExistingSteps) {
-      // 已有排期：只更新通告元数据，不动排期时间
-    } else {
-      // 无排期：用通告拍摄段自动倒排
-      const steps = getStepDefs();
-      const shootDef = steps.find(s => s.key === 'shoot');
-      const shootIdx = steps.indexOf(shootDef);
-      let postDays = 0;
-      if (shootIdx >= 0) {
-        for (let i = shootIdx + 1; i < steps.length; i++) postDays += steps[i].duration || 1;
-      }
-      const publishDate = addDays(shootEnd, postDays + 1);
-      t.productionSteps = anchorSchedule(shootStart, shootEnd, publishDate);
-      t.publishDate = publishDate;
+    const shootSegments = (p.segments || detectShootSegments(p.dates)).map(s => ({ start: s.start, end: s.end, label: s.label || '' }));
+    if (!shootSegments.length) { showToast('通告中没有有效拍摄日期', 'warn'); return; }
+    const shootStart = shootSegments[0].start;
+    const shootEnd = shootSegments[shootSegments.length - 1].end;
+    const shoot = t.productionSteps.find(s => s.key === 'shoot');
+    if (applyDates && (!shoot || !getStepRanges(shoot).length)) {
+      t.scheduleConfirmed = false;
+      rememberSchedule(t);
+      const target = shoot || stepsFromCanbox([]).find(s => s.key === 'shoot');
+      if (!shoot) t.productionSteps.push(target);
+      PocketSchedule.setRanges(target, shootSegments);
     }
 
-    t.canboxImport = { source: 'canbox', shootStart, shootEnd, dates: p.dates, segments: p.segments || null, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations };
+    t.canboxImport = { source: 'canbox', shootStart, shootEnd, dates: p.dates, shootSegments, location: p.location, type: p.type, laodao: p.laodao, director: p.director, photographer: p.photographer, production: p.production, rd: p.rd, operational: p.operational, audio: p.audio, business: p.business, isAdvertiser: p.isAdvertiser, advertiserNo: p.advertiserNo, orientations: p.orientations };
     markUpdated(t); saveData(); closeCanboxImport();
     logAction('canbox.bind', t.id, { name: p.name, shootStart, shootEnd });
     renderAll();
@@ -2488,13 +2296,13 @@
           const isToday = dateStr === today;
           const isInRange = dateStr >= minDate && dateStr <= maxDate;
           const hasNote = notes[dateStr];
-          const daySteps = steps.filter(s => dateStr >= s.startDate && dateStr <= (s.endDate || s.startDate));
+          const daySteps = steps.filter(s => getStepRanges(s).some(range => dateStr >= range.start && dateStr <= range.end));
 
-          html += `<td class="border-b border-beige-100 p-1.5 align-top cursor-pointer hover:bg-beige-50 ${isToday?'bg-brand/5':''}" style="height:72px;overflow:hidden" onclick="openNoteModal('${topic.id}','${dateStr}')">
+          html += `<td class="border-b border-beige-100 p-1.5 align-top cursor-pointer hover:bg-beige-50 ${isToday?'bg-brand/5':''}" style="height:72px;overflow:hidden" onclick="onDateCellClick(event,'${topic.id}','${dateStr}')">
             <div class="text-xs ${isToday?'text-brand font-bold':isInRange?'text-coffee':'text-coffee-light'} mb-1">${day}</div>`;
 
           daySteps.forEach(s => {
-            html += `<div class="text-xs font-semibold mb-0.5 rounded px-1" style="background:${s.color}33;line-height:16px">${s.name}</div>`;
+            html += `<div class="text-xs font-semibold mb-0.5 rounded px-1" style="background:${s.color}33;line-height:16px">${escapeHtml(s.name)}</div>`;
           });
 
           if (hasNote) {
@@ -2565,21 +2373,26 @@
   function saveNote() {
     const topic = appState.topics.find(t => t.id === noteEditTopicId);
     if (!topic || !noteEditDate) return;
+    const topicId = noteEditTopicId;
+    const date = noteEditDate;
     const text = document.getElementById('note-text').value.trim();
     if (!topic.notes) topic.notes = {};
-    if (text) topic.notes[noteEditDate] = text;
-    else delete topic.notes[noteEditDate];
+    const existed = !!topic.notes[date];
+    if (text) topic.notes[date] = text;
+    else delete topic.notes[date];
     markUpdated(topic); saveData(); closeNoteModal();
-    logAction(text ? 'note.create' : 'note.delete', noteEditTopicId, { date: noteEditDate, text: text || '' });
+    logAction(text ? (existed ? 'note.update' : 'note.create') : 'note.delete', topicId, { date, text: text || '' });
     renderAll();
   }
   function deleteNote() {
     const topic = appState.topics.find(t => t.id === noteEditTopicId);
     if (!topic || !noteEditDate) return;
+    const topicId = noteEditTopicId;
+    const date = noteEditDate;
     if (!topic.notes) topic.notes = {};
-    delete topic.notes[noteEditDate];
+    delete topic.notes[date];
     markUpdated(topic); saveData(); closeNoteModal();
-    logAction('note.delete', noteEditTopicId, { date: noteEditDate });
+    logAction('note.delete', topicId, { date });
     renderAll();
   }
 
@@ -2628,7 +2441,10 @@
     if (cb.operational) infoItems.push(['运营', cb.operational]);
     if (cb.laodao) infoItems.push(['老刀出镜', '是']);
     if (cb.advertiserNo) infoItems.push(['广告商单', cb.advertiserNo]);
-    if (cb.shootStart && cb.shootEnd) infoItems.push(['拍摄段', `${cb.shootStart} ~ ${cb.shootEnd}`]);
+    if (cb.shootStart && cb.shootEnd) {
+      const cbSegments = cb.shootSegments || cb.segments;
+      infoItems.push(['拍摄段', cbSegments?.length ? cbSegments.map(s => s.start === s.end ? s.start : `${s.start} ~ ${s.end}`).join('，') : `${cb.shootStart} ~ ${cb.shootEnd}`]);
+    }
 
     if (infoItems.length) {
       const half = Math.ceil(infoItems.length / 2);
@@ -2650,7 +2466,7 @@
     html += `<div style="margin-bottom:20px;font-size:12px;color:#6B5B50">`;
     html += steps.map(s => {
       const range = s.startDate === (s.endDate || s.startDate) ? shortDate(s.startDate) : `${shortDate(s.startDate)}~${shortDate(s.endDate || s.startDate)}`;
-      return `${s.name} ${range}`;
+      return `${escapeHtml(s.name)} ${range}`;
     }).join(' · ');
     html += `</div>`;
 
@@ -2689,13 +2505,13 @@
             mh += `<td style="padding:${CELL_PAD}px;border:1px solid #F0EDE6;width:${CELL}px;height:${CELL_H}px;vertical-align:top;box-sizing:border-box"></td>`;
           } else {
             const ds = `${curYear}-${String(curMonth+1).padStart(2,'0')}-${String(cd).padStart(2,'0')}`;
-            const dsSteps = steps.filter(s => ds >= s.startDate && ds <= (s.endDate || s.startDate));
+            const dsSteps = steps.filter(s => getStepRanges(s).some(r => ds >= r.start && ds <= r.end));
             const dsNote = notes[ds];
             mh += `<td style="padding:${CELL_PAD}px;border:1px solid #F0EDE6;width:${CELL}px;height:${CELL_H}px;vertical-align:top;box-sizing:border-box">`;
             mh += `<div style="font-size:11px;color:#4A3C31;margin-bottom:2px;line-height:14px">${cd}</div>`;
             dsSteps.forEach(s => {
               const bg = s.color + '33';
-              mh += `<div class="cal-tag" style="font-size:10px;font-weight:600;color:#4A3C31;background:${bg};padding:2px 4px;margin-bottom:1px;border-radius:2px;line-height:14px">${s.name}</div>`;
+              mh += `<div class="cal-tag" style="font-size:10px;font-weight:600;color:#4A3C31;background:${bg};padding:2px 4px;margin-bottom:1px;border-radius:2px;line-height:14px">${escapeHtml(s.name)}</div>`;
             });
             if (dsNote) mh += `<div style="font-size:9px;font-weight:600;color:#7B6B5A;background:#FFF3CD;padding:2px 4px;margin-bottom:1px;border-radius:2px;line-height:14px">${escapeHtml(dsNote)}</div>`;
             mh += '</td>';
@@ -2754,13 +2570,17 @@
     const usedDates = new Set();
 
     steps.forEach(s => {
-      const isRange = s.startDate !== (s.endDate || s.startDate);
-      const dateStr = isRange ? `${shortDate(s.startDate)}~${shortDate(s.endDate || s.startDate)}` : shortDate(s.startDate);
-      lines.push(`${s.name} ${dateStr}`);
-      // 收集工序覆盖的日期
-      let d = s.startDate;
-      const end = s.endDate || s.startDate;
-      while (d <= end) { usedDates.add(d); d = addDays(d, 1); }
+      getStepRanges(s).forEach((range, rangeIdx) => {
+        const dateStr = range.start === range.end ? shortDate(range.start) : `${shortDate(range.start)}~${shortDate(range.end)}`;
+        const segmentLabel = getStepRanges(s).length > 1 ? ` ${rangeIdx + 1}` : '';
+        lines.push(`${s.name}${segmentLabel} ${dateStr}`);
+        let d = range.start;
+        while (d <= range.end) {
+          usedDates.add(d);
+          if (notes[d]) String(notes[d]).split('\n').forEach(text => lines.push(`  (${shortDate(d)} ${text})`));
+          d = addDays(d, 1);
+        }
+      });
     });
 
     // 附加不属于任何工序的纯备注
@@ -2805,7 +2625,10 @@
       if (cb.audio) lines.push(`收音: ${cb.audio}`);
       if (cb.operational) lines.push(`运营: ${cb.operational}`);
       if (cb.laodao) lines.push(`老刀出镜: 是`);
-      if (cb.shootStart && cb.shootEnd) lines.push(`拍摄段: ${cb.shootStart} ~ ${cb.shootEnd}`);
+      if (cb.shootStart && cb.shootEnd) {
+        const cbSegments = cb.shootSegments || cb.segments;
+        lines.push(`拍摄段: ${cbSegments?.length ? cbSegments.map(s => s.start === s.end ? s.start : `${s.start} ~ ${s.end}`).join(', ') : `${cb.shootStart} ~ ${cb.shootEnd}`}`);
+      }
       if (cb.advertiserNo) lines.push(`广告商单: ${cb.advertiserNo}`);
     }
     lines.push('');
@@ -2813,10 +2636,13 @@
 
     // 工序（含完成状态）
     steps.forEach(s => {
-      const isRange = s.startDate !== (s.endDate || s.startDate);
-      const dateStr = s.startDate ? (isRange ? `${s.startDate} ~ ${s.endDate}` : s.startDate) : '未安排';
+      const ranges = getStepRanges(s);
       const status = s.done ? ' ✓' : '';
-      lines.push(`${s.name}  ${dateStr}${status}`);
+      if (!ranges.length) lines.push(`${s.name}  未安排${status}`);
+      ranges.forEach((range, idx) => {
+        const dateStr = range.start === range.end ? range.start : `${range.start} ~ ${range.end}`;
+        lines.push(`${s.name}${ranges.length > 1 ? ` ${idx + 1}` : ''}  ${dateStr}${status}`);
+      });
     });
 
     // 备注
@@ -2850,6 +2676,7 @@
   let tmlParsed = null;
 
   function openTmlModal(topicId) {
+    const topic = appState.topics.find(t => t.id === topicId);
     tmlTopicId = topicId;
     document.getElementById('tml-input').value = '';
     document.getElementById('tml-preview').classList.add('hidden');
@@ -2857,6 +2684,7 @@
     document.querySelector('#tml-modal h3').textContent = '粘贴 TML 排期';
     document.getElementById('tml-modal').classList.remove('hidden');
     document.getElementById('tml-input').focus();
+    document.getElementById('tml-year').value = Number(topic?.publishDate?.slice(0, 4)) || new Date().getFullYear();
   }
   function closeTmlModal() {
     document.getElementById('tml-modal').classList.add('hidden');
@@ -2898,6 +2726,7 @@
     const topic = appState.topics.find(t => t.id === topicId);
     if (!topic || !topic.tmlNote) return;
     tmlTopicId = topicId;
+    document.getElementById('tml-year').value = Number(topic.publishDate?.slice(0, 4)) || new Date().getFullYear();
     // 设置输入框内容并解析
     document.getElementById('tml-input').value = topic.tmlNote;
     document.querySelector('#tml-modal h3').textContent = '重新识别 TML';
@@ -2927,7 +2756,7 @@
     const month = parseInt(parts[0]);
     const day = parseInt(parts[1]);
     if (isNaN(month) || isNaN(day) || month < 1 || month > 12 || day < 1 || day > 31) return null;
-    const year = (month < new Date().getMonth() + 1) ? currentYear + 1 : currentYear;
+    const year = currentYear;
     // 校验日期真实存在（拒绝如 2月30日 之类的非法日期）
     const dt = new Date(year, month - 1, day);
     if (dt.getFullYear() !== year || dt.getMonth() !== month - 1 || dt.getDate() !== day) return null;
@@ -2972,9 +2801,7 @@
       // 结束月份早于起始月份 → 跨年（如 12.28-1.3）
       endYear = startYear + 1;
     } else if (endMonth === startMonth && endDay < startDay) {
-      // 同月但日更早 → 跨到下一月（起始月为 12 月时跨年）
-      endMonth = startMonth + 1;
-      if (endMonth > 12) { endMonth = 1; endYear = startYear + 1; }
+      return null;
     }
     const dt = new Date(endYear, endMonth - 1, endDay);
     if (dt.getFullYear() !== endYear || dt.getMonth() !== endMonth - 1 || dt.getDate() !== endDay) return null;
@@ -2988,7 +2815,7 @@
     const input = document.getElementById('tml-input').value.trim();
     if (!input) { alert('请粘贴 TML 文本'); return; }
 
-    const currentYear = new Date().getFullYear();
+    const currentYear = Number(document.getElementById('tml-year').value) || new Date().getFullYear();
     const lines = input.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
     const steps = {};  // stepKey → { startDate, endDate }
@@ -3000,9 +2827,23 @@
       // 跳过纯括号行（追加到上一个日期）
       const parenMatch = line.match(/^[（(](.+)[）)]$/);
       if (parenMatch && lastDate) {
-        if (!notes[lastDate]) notes[lastDate] = [];
-        notes[lastDate].push(parenMatch[1]);
+        const datedNote = parenMatch[1].match(/^(\d{1,2}[.\/]\d{1,2})\s+(.+)$/);
+        const noteDate = datedNote ? (parseTmlDate(datedNote[1], currentYear) || lastDate) : lastDate;
+        if (!notes[noteDate]) notes[noteDate] = [];
+        notes[noteDate].push(datedNote ? datedNote[2] : parenMatch[1]);
         return;
+      }
+
+      // 纯备注支持“日期 内容”格式（与导出格式一致）
+      const dateFirstNote = line.match(/^(\d{1,2}[.\/]\d{1,2})\s+(.+)$/);
+      if (dateFirstNote) {
+        const noteDate = parseTmlDate(dateFirstNote[1], currentYear);
+        if (noteDate) {
+          if (!notes[noteDate]) notes[noteDate] = [];
+          notes[noteDate].push(dateFirstNote[2]);
+          lastDate = noteDate;
+          return;
+        }
       }
 
       // 尝试匹配: 工序名 + 日期
@@ -3018,10 +2859,11 @@
 
       // 匹配标准工序
       const nameLower = namePart.toLowerCase();
-      const matched = TML_STEP_MAP.find(m => m.keys.some(k => nameLower.includes(k)));
+      const namedStep = appState.topics.find(t => t.id === tmlTopicId)?.productionSteps.find(s => s.name.toLowerCase() === nameLower);
+      const matched = namedStep ? { stepKey: namedStep.key } : TML_STEP_MAP.find(m => m.keys.some(k => nameLower.includes(k)));
 
       // 检查是否为备注关键词（优先级高于工序匹配）
-      const isNoteKeyword = TML_NOTE_KEYWORDS.some(k => nameLower.includes(k));
+      const isNoteKeyword = !namedStep && TML_NOTE_KEYWORDS.some(k => nameLower.includes(k));
 
       // 解析日期
       const isRange = datePart.includes('-') || datePart.includes('–') || datePart.includes('~');
@@ -3041,7 +2883,15 @@
       lastDate = startDate;
 
       if (matched && !isNoteKeyword) {
-        steps[matched.stepKey] = { startDate, endDate, name: namePart };
+        if (matched.stepKey === 'shoot') {
+          const previous = steps.shoot;
+          const segments = previous?.segments || (previous ? [{ start: previous.startDate, end: previous.endDate }] : []);
+          segments.push({ start: startDate, end: endDate });
+          segments.sort((a, b) => a.start.localeCompare(b.start));
+          steps.shoot = { startDate: segments[0].start, endDate: segments[segments.length - 1].end, segments, name: namePart };
+        } else {
+          steps[matched.stepKey] = { startDate, endDate, name: namePart };
+        }
       } else {
         if (!notes[startDate]) notes[startDate] = [];
         notes[startDate].push(namePart);
@@ -3049,7 +2899,7 @@
     });
 
     // 生成预览
-    tmlParsed = { steps, notes };
+    tmlParsed = { steps, notes, selectedNotes: {}, baseline: JSON.stringify(PocketWorkflow.snapshot(appState.topics.find(t=>t.id===tmlTopicId))) };
     const preview = document.getElementById('tml-preview');
     preview.classList.remove('hidden');
 
@@ -3059,11 +2909,12 @@
       html += '<div><h5 class="text-xs font-semibold text-coffee mb-1.5">工序</h5><div class="space-y-1">';
       const defs = getStepDefs();
       Object.entries(steps).forEach(([key, s]) => {
-        const def = defs.find(d => d.key === key);
+        const def = defs.find(d => d.key === key) || appState.topics.find(t => t.id === tmlTopicId)?.productionSteps.find(s => s.key === key);
         const color = def ? def.color : '#A3968C';
         const name = def ? def.name : key;
-        const range = s.startDate === s.endDate ? shortDate(s.startDate) : `${shortDate(s.startDate)} ~ ${shortDate(s.endDate)}`;
-        html += `<div class="flex items-center gap-2 text-sm"><span class="w-3 h-3 rounded" style="background:${color}"></span><span class="text-coffee">${name}</span><span class="text-coffee-light">${range}</span></div>`;
+        const range = (s.segments || [{ start: s.startDate, end: s.endDate }]).map(r => r.start === r.end ? r.start : `${r.start} ~ ${r.end}`).join('，');
+        const previous = appState.topics.find(t=>t.id===tmlTopicId)?.productionSteps.find(s=>s.key===key);
+        html += `<label class="review-row"><input type="checkbox" checked onchange="tmlParsed.steps['${escapeHtml(key)}'].selected=this.checked"><div><strong>${escapeHtml(name)}</strong><p>当前：${escapeHtml(PocketWorkflow.rangeText(getStepRanges(previous)))}</p><p>应用后：${escapeHtml(range)}</p></div></label>`;
       });
       html += '</div></div>';
     }
@@ -3071,9 +2922,7 @@
     if (Object.keys(notes).length) {
       html += '<div><h5 class="text-xs font-semibold text-coffee mb-1.5">备注</h5><div class="space-y-1">';
       Object.entries(notes).sort().forEach(([date, texts]) => {
-        texts.forEach(text => {
-          html += `<div class="flex items-center gap-2 text-sm"><span class="text-coffee-light">${shortDate(date)}</span><span class="text-coffee">${escapeHtml(text)}</span></div>`;
-        });
+        html += `<label class="review-row"><input type="checkbox" checked onchange="tmlParsed.selectedNotes['${date}']=this.checked"><div><strong>${date} 备注</strong><p>${escapeHtml(texts.join('；'))}</p></div></label>`;
       });
       html += '</div></div>';
     }
@@ -3096,59 +2945,30 @@
 
   function applyTml() {
     if (!tmlParsed || !tmlTopicId) return;
-    const topic = appState.topics.find(t => t.id === tmlTopicId);
-    if (!topic) return;
-
-    const defs = getStepDefs();
-
-    // 应用工序
-    Object.entries(tmlParsed.steps).forEach(([key, s]) => {
-      const existing = (topic.productionSteps || []).find(step => step.key === key);
-      const def = defs.find(d => d.key === key);
-      if (existing) {
-        existing.startDate = s.startDate;
-        existing.endDate = s.endDate;
-        existing.cleared = false;
-      } else if (def) {
-        topic.productionSteps.push({ key: def.key, name: def.name, startDate: s.startDate, endDate: s.endDate, duration: daysBetween(s.startDate, s.endDate) + 1, color: def.color, done: false, cleared: false });
-      }
-    });
-
-    // 未匹配到的默认工序 → 设为 cleared
-    const matchedKeys = Object.keys(tmlParsed.steps);
-    defs.forEach(def => {
-      if (!matchedKeys.includes(def.key)) {
-        const existing = (topic.productionSteps || []).find(s => s.key === def.key);
-        if (existing) {
-          existing.cleared = true;
-          existing.startDate = '';
-          existing.endDate = '';
-        } else {
-          topic.productionSteps.push({ key: def.key, name: def.name, startDate: '', endDate: '', duration: def.duration, color: def.color, done: false, cleared: true });
-        }
-      }
-    });
-    sortStepsByDefaultOrder(topic.productionSteps);
-
-    // R03: 解析到发布工序时同步更新 publishDate
-    if (tmlParsed.steps.publish) {
-      topic.publishDate = tmlParsed.steps.publish.startDate;
-    }
-
-    // 应用备注
-    if (!topic.notes) topic.notes = {};
-    Object.entries(tmlParsed.notes).forEach(([date, texts]) => {
+    const topic = appState.topics.find(t => t.id === tmlTopicId); if (!topic) return;
+    const parsed = tmlParsed;
+    if (parsed.baseline && parsed.baseline !== JSON.stringify(PocketWorkflow.snapshot(topic))) { showToast('预览后排期已变化，请重新预览', 'warn'); return; }
+    const applied = changeSchedule(topic, () => {
+      Object.entries(parsed.steps).filter(([,item])=>item.selected !== false).forEach(([key, item]) => {
+        let step = topic.productionSteps.find(s => s.key === key);
+        const def = getStepDefs().find(d => d.key === key) || DEFAULT_STEP_DEFS.find(d => d.key === key);
+        if (!step && def) { step = PocketSchedule.blankSteps([def])[0]; topic.productionSteps.push(step); }
+        if (!step) return;
+        PocketSchedule.setRanges(step, key === 'publish' ? [{ start: item.startDate, end: item.startDate }]
+          : item.segments || [{ start: item.startDate, end: item.endDate }]);
+      });
+    }, { source: 'tml', steps: Object.keys(parsed.steps) }, false);
+    if (!applied) return;
+    topic.notes ||= {};
+    Object.entries(parsed.notes).filter(([date])=>parsed.selectedNotes?.[date] !== false).forEach(([date, texts]) => {
       const existing = topic.notes[date] || '';
-      const newNotes = texts.join('；');
-      topic.notes[date] = existing ? existing + '；' + newNotes : newNotes;
+      const newNotes = texts.filter(text => !existing.split('；').includes(text)).join('；');
+      if (newNotes) topic.notes[date] = existing ? existing + '；' + newNotes : newNotes;
     });
-
-    // R02: 解析并应用时同步记录 TML 原文
     const rawInput = document.getElementById('tml-input').value.trim();
     if (rawInput) topic.tmlNote = rawInput;
-
     markUpdated(topic); saveData(); closeTmlModal();
-    logAction('tml.apply', topic.id, { steps: Object.keys(tmlParsed.steps), notes: Object.keys(tmlParsed.notes) });
+    logAction('tml.apply', topic.id, { steps: Object.keys(parsed.steps), notes: Object.keys(parsed.notes) });
     renderAll();
   }
 
@@ -3163,24 +2983,31 @@
     'date.publish': '发布日期', 'note.create': '创建备注', 'note.update': '修改备注', 'note.delete': '删除备注',
     'tml.apply': 'TML 应用', 'tml.record': 'TML 记录',
     'canbox.import': 'Canbox 导入', 'canbox.bind': 'Canbox 绑定',
+    'prep.add': '新增准备', 'prep.toggle': '准备状态', 'prep.update': '修改准备', 'prep.delete': '删除准备',
+    'canbox.unbind': '解除 Canbox', 'topic.complete': '完成选题', 'topic.uncomplete': '撤回完成',
+    'topic.pending': '项目变动', 'topic.resolved': '确认排期',
     'settings.save': '保存设置', 'data.import': '导入数据', 'data.export': '导出数据'
   };
   function openLogViewer() {
     document.getElementById('log-date').value = todayStr();
     document.getElementById('log-modal').classList.remove('hidden');
-    loadLogs();
+    loadLogs(1);
   }
   function closeLogViewer() { document.getElementById('log-modal').classList.add('hidden'); }
-  async function loadLogs() {
+  async function loadLogs(page = 1) {
     const date = document.getElementById('log-date').value;
-    logPage = 1;
+    logPage = page;
     try {
       const res = await fetch(`/api/logs?date=${date}&page=${logPage}`);
       const data = await res.json();
       logCache = data.logs || [];
       logTotalPages = data.totalPages || 1;
       renderLogList();
-      document.getElementById('log-pagination').innerHTML = `<span>共 ${data.total} 条</span><span>${data.date}</span>`;
+      document.getElementById('log-pagination').innerHTML = `<span>共 ${data.total} 条 · ${data.date}</span><span class="flex items-center gap-2">
+        <button onclick="loadLogs(${Math.max(1, logPage - 1)})" ${logPage <= 1 ? 'disabled' : ''} class="px-2 py-0.5 border border-beige-300 rounded disabled:opacity-30">上一页</button>
+        <span>${logPage}/${logTotalPages}</span>
+        <button onclick="loadLogs(${Math.min(logTotalPages, logPage + 1)})" ${logPage >= logTotalPages ? 'disabled' : ''} class="px-2 py-0.5 border border-beige-300 rounded disabled:opacity-30">下一页</button>
+      </span>`;
     } catch { logCache = []; renderLogList(); }
   }
   function renderLogList() {
@@ -3205,12 +3032,19 @@
     }).join('');
   }
 
+  window.addEventListener('beforeunload', e => {
+    persistLocalDraft();
+    if (_dirtyTopics.size || _savingTopics.size || _settingsDirty || _topicConflicts.size) { e.preventDefault(); e.returnValue = ''; }
+  });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { document.activeElement?.blur(); persistLocalDraft(); flushSave(); } });
   // ── 初始化 ──
   loadData().then(() => { switchView('calendar'); connectSSE(); });
   document.addEventListener('keydown', e => {
-    if ((e.metaKey||e.ctrlKey) && e.key==='s') { e.preventDefault(); saveData(); }
-    if (e.key==='n' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) { e.preventDefault(); createTopic(); }
-    if (e.key==='Escape') { closeSettings(); closeCategory(); closeStepPopup(); }
+    if ((e.metaKey||e.ctrlKey) && e.key==='s') { e.preventDefault(); document.activeElement?.blur(); flushSave(); }
+    const isTyping = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName) || document.activeElement.isContentEditable;
+    if ((e.metaKey||e.ctrlKey) && e.key==='z' && !isTyping && currentView === 'edit') { e.preventDefault(); undoSchedule(selectedTopicId); }
+    if (e.key==='n' && !e.metaKey && !e.ctrlKey && !e.altKey && !isTyping) { e.preventDefault(); createTopic(); }
+    if (e.key==='Escape') { closeSettings(); closeCategory(); closeStepPopup(); closeTmlModal(); closeCanboxImport(); closeNoteModal(); }
   });
   </script>
   <script src="/html2canvas.min.js"></script>

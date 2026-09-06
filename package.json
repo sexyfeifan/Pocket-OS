@@ -1,13 +1,18 @@
 {
   "name": "pocket-os",
-  "version": "1.9.4",
+  "version": "1.9.7",
   "description": "智能自媒体操作系统 — 面向J型创作者的内容全生命周期管理",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test": "node --test tests/*.test.js",
+    "check": "node --check server.js && npm test"
   },
   "dependencies": {
     "express": "^4.21.2"
+  },
+  "overrides": {
+    "qs": "6.16.0"
   }
 }

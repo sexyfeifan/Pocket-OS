@@ -21,7 +21,7 @@
     return topics.filter(t => ($('completed').checked || phase === 'completed' || !t.completed)
       && (!$('category').value || t.category === $('category').value)
       && (!phase || W.lifecycle(t) === phase)
-      && (!query || [t.title,...t.productionSteps.map(s => s.name),...Object.values(t.notes || {})].join(' ').toLowerCase().includes(query)))
+      && (!query || [t.title,W.businessText(t),...t.productionSteps.map(s => s.name),...Object.values(t.notes || {})].join(' ').toLowerCase().includes(query)))
       .sort((a,b) => (a.publishDate || 'z').localeCompare(b.publishDate || 'z') || a.title.localeCompare(b.title));
   }
   function badges(t) { return `<span class="badge">${esc(W.lifecycleLabels[W.lifecycle(t)])}</span><span class="badge">排期 · ${esc(W.scheduleStatus(t))}</span>`; }
@@ -32,7 +32,7 @@
     return `<div class="cards">${items.map(t => {
       const st = W.stats(t);
       return `<article class="card"><div class="card-top"><span class="badge">${esc(t.category)}</span><small>${esc(t.platforms.join(' · '))}</small></div>
-      <h2>${esc(t.title)}</h2><div class="badges">${badges(t)}</div><p class="date">${t.publishDate ? `发布 ${esc(t.publishDate)}` : '发布日期未定'}</p>
+      <h2>${esc(t.title)}</h2><p class="help">${esc(W.businessText(t))}</p><div class="badges">${badges(t)}</div><p class="date">${t.publishDate ? `发布 ${esc(t.publishDate)}` : '发布日期未定'}</p>
       <div class="progress"><span style="width:${st.percent}%"></span></div><small>${esc(W.progressText(t))}</small>
       <div>${nodes(t,6)}</div>${t.productionSteps.length > 6 ? `<span class="extra">另有 ${t.productionSteps.length-6} 个节点</span>` : ''}
       <button data-topic="${esc(t.id)}">查看项目详情 ↗</button></article>`;
@@ -156,7 +156,7 @@
     const y=$('detail').scrollTop;
     if(detail.type==='topic') {
       const t=topics.find(t=>t.id===detail.id);
-      $('detail-content').innerHTML=t ? `<h2>${esc(t.title)}</h2>${timelinePanel([t],'topic:'+t.id,true)}<article class="detail-project-card"><p class="outlook">${esc(W.outlookText(t))}</p><p>${badges(t)}</p><p class="muted">${esc(t.category)} · ${esc(t.platforms.join(' · '))}</p><p class="date">${t.publishDate?'发布 '+esc(t.publishDate):'发布日期未定'}</p><p>${esc(W.progressText(t))}</p><p class="help">${W.mode(t)==='calendar'?'按日期自动推进 · 按计划结束不代表人工验收':'手动确认完成'} · ${esc(W.zone(t))}</p>${t.pendingReason?`<p>调整原因：${esc(t.pendingReason)}</p>`:''}
+      $('detail-content').innerHTML=t ? `<h2>${esc(t.title)}</h2>${timelinePanel([t],'topic:'+t.id,true)}<article class="detail-project-card"><p class="help">${esc(W.businessText(t))}</p><p class="outlook">${esc(W.outlookText(t))}</p><p>${badges(t)}</p><p class="muted">${esc(t.category)} · ${esc(t.platforms.join(' · '))}</p><p class="date">${t.publishDate?'发布 '+esc(t.publishDate):'发布日期未定'}</p><p>${esc(W.progressText(t))}</p><p class="help">${W.mode(t)==='calendar'?'按日期自动推进 · 按计划结束不代表人工验收':'手动确认完成'} · ${esc(W.zone(t))}</p>${t.pendingReason?`<p>调整原因：${esc(t.pendingReason)}</p>`:''}
       <section><h3>全部制作节点</h3>${nodes(t)}</section><section><h3>准备事项</h3>${t.preparationTasks.length?t.preparationTasks.map(p=>`<p>${p.done?'✓':'○'} ${esc(p.text)}</p>`).join(''):'<p class="muted">暂无事项</p>'}</section>
       <section><h3>日期备注</h3>${Object.keys(t.notes).length?Object.entries(t.notes).sort().map(([d,n])=>`<p><strong>${esc(d)}</strong><br>${esc(n)}</p>`).join(''):'<p class="muted">暂无备注</p>'}</section><p class="help">最近修改：${t.updatedAt?esc(new Date(t.updatedAt).toLocaleString('zh-CN')):'—'}</p></article>` : '<p class="empty">该项目已从工作台移除。</p>';
     } else {

@@ -5,7 +5,7 @@ let workbenchCompact = false;
 try { workbenchFilter = { ...workbenchFilter, ...JSON.parse(localStorage.getItem('pocket-workbench-filter') || '{}') }; workbenchCompact = localStorage.getItem('pocket-workbench-compact') === 'true'; } catch {}
 function filteredWorkbenchTopics() {
   const q=workbenchFilter.query.toLowerCase().trim();
-  return appState.topics.filter(t=>(!q || [t.title,...(t.productionSteps||[]).map(s=>s.name)].join(' ').toLowerCase().includes(q))
+  return appState.topics.filter(t=>(!q || [t.title,PocketWorkflow.businessText(t),...(t.productionSteps||[]).map(s=>s.name)].join(' ').toLowerCase().includes(q))
     && (!workbenchFilter.lifecycle || PocketWorkflow.lifecycle(t)===workbenchFilter.lifecycle));
 }
 function setWorkbenchFilter() {

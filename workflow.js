@@ -128,6 +128,10 @@
     const publishDate = S.ranges(steps.find(s=>s.key==='publish'))[0]?.start || '';
     return { id: t.id, title: String(t.title || '未命名项目'), category: t.category || '内容',
       platforms: Array.isArray(t.platforms) ? t.platforms.map(String) : [], publishDate,
+      projectCode: typeof t.projectCode==='string'?t.projectCode.slice(0,100):'',
+      formats: Array.isArray(t.formats)?t.formats.filter(v=>['横屏','竖屏'].includes(v)):[],
+      advertising: ['有广告','无广告'].includes(t.advertising)?t.advertising:'',
+      cooperationPlatforms: Array.isArray(t.cooperationPlatforms)?t.cooperationPlatforms.filter(v=>typeof v==='string').slice(0,20):[],
       completed: !!t.completed, lifecycle: lifecycle(t), projectStatus: t.projectStatus, progressionMode:mode(t), timeZone:zone(t),
       scheduleConfirmed: !!t.scheduleConfirmed, pendingReason: String(t.pendingReason || ''), updatedAt: t.updatedAt,
       productionSteps: steps.map(s => ({ key: s.key, name: String(s.name || s.key),
@@ -152,5 +156,9 @@
     return { title: (topic.title || '项目') + ' · 副本', category: topic.category || '内容', platforms: [...(topic.platforms || [])],
       productionSteps: S.blankSteps(topic.productionSteps || []), tasks: (topic.preparationTasks || []).map(p=>p.text) };
   }
-  return { DEFAULT_ZONE, setClock, validZone, zone, day, mode, stateLabels, exceptionKinds, stepState, settled, dateText, stats, progressText, lifecycle, lifecycleLabels, scheduleStatus, events, outlook, outlookText, attention, overviewPanels, snapshot, diff, rangeText, publicTopic, templates, blueprint, copyStructure };
+  function businessText(t) {
+    const formats = Array.isArray(t.formats) ? t.formats : [], partners = Array.isArray(t.cooperationPlatforms) ? t.cooperationPlatforms : [];
+    return [t.projectCode,formats.join(' / '),t.advertising,partners.length?'合作：'+partners.join(' / '):''].filter(Boolean).join(' · ');
+  }
+  return { DEFAULT_ZONE, setClock, validZone, zone, day, mode, stateLabels, exceptionKinds, stepState, settled, dateText, stats, progressText, lifecycle, lifecycleLabels, scheduleStatus, events, outlook, outlookText, attention, overviewPanels, snapshot, diff, rangeText, publicTopic, templates, blueprint, copyStructure, businessText };
 });

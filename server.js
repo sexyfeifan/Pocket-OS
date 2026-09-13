@@ -6,6 +6,8 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 const Workflow = require('./workflow');
+const ImportModel = require('./import-model');
+let importService;
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -24,9 +26,7 @@ if (VIEW_PASSWORD && (!ACCESS_PASSWORD || VIEW_PASSWORD === ACCESS_PASSWORD)) {
   throw new Error('查看密码要求同时设置不同的管理密码 POCKET_OS_PASSWORD');
 }
 
-app.use(express.json({ limit: '10mb' }));
-
-// 可选的整站 Basic Auth。默认关闭，公网或反向代理部署时建议设置 POCKET_OS_PASSWORD。
+// Common browser protections apply to both credential domains.
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
@@ -36,6 +36,14 @@ app.use((req, res, next) => {
     if (req.headers['sec-fetch-site'] === 'cross-site' || (origin && (() => { try { return new URL(origin).host !== req.headers.host; } catch { return true; } })()))
       return res.status(403).json({ error: '不接受跨站修改请求' });
   }
+  next();
+});
+// An Agent credential is valid only for this restricted router, never for the editor.
+app.use('/api/agent/v1', express.json({ limit: '64kb' }), (req, res, next) => importService.agent(req, res, next));
+app.use(express.json({ limit: '10mb' }));
+// 可选的整站 Basic Auth。导入管理必须同时启用管理密码。
+app.use((req, res, next) => {
+  if (/^Bearer\s/i.test(req.headers.authorization || '')) return res.status(403).json({ error: 'Agent 凭证不能访问管理接口' });
   if (!ACCESS_PASSWORD) { req.accessRole = 'editor'; return next(); }
   const header = req.headers.authorization || '';
   const encoded = header.startsWith('Basic ') ? header.slice(6) : '';
@@ -60,7 +68,7 @@ app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, 'index.ht
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get(['/view','/canbox'], (req, res) => res.sendFile(path.join(__dirname, 'view.html')));
 app.get('/view.webmanifest', (req, res) => res.json({ name:'Pocket OS 只读看板', short_name:'排期看板', start_url:'/view', scope:'/view', display:'standalone', theme_color:'#FAF7F2', background_color:'#FAF7F2', icons:[{src:'/icon-192.png',sizes:'192x192',type:'image/png'},{src:'/icon-512.png',sizes:'512x512',type:'image/png'}] }));
-for (const file of ['workflow.js','timeline.js','viewer.js','viewer.css','workbench.js','workbench.css','editor.js'])
+for (const file of ['workflow.js','timeline.js','viewer.js','viewer.css','workbench.js','workbench.css','editor.js','imports.js','imports.css'])
   app.get('/' + file, (req, res) => res.sendFile(path.join(__dirname, file)));
 app.get('/manifest.json', (req, res) => res.sendFile(path.join(__dirname, 'manifest.json')));
 app.get('/icon-192.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-192.png')));
@@ -172,6 +180,24 @@ function withMutationLock(task) {
   return result;
 }
 
+// Both human edits and confirmed imports share the same commit/version/history path.
+async function persistTopic(existing, topic) {
+  const saved = { ...topic, _version: (existing?._version || 0) + 1, updatedAt: new Date().toISOString() };
+  saved.scheduleHistory = (Array.isArray(existing?.scheduleHistory) ? existing.scheduleHistory : []).slice(-30);
+  const before = Workflow.snapshot(existing || {}), after = Workflow.snapshot(saved);
+  const changes = Workflow.diff(before, after);
+  if (changes.length) {
+    saved.scheduleHistory.push({ id: crypto.randomUUID(), at: saved.updatedAt, before, after, changes });
+    saved.scheduleHistory = saved.scheduleHistory.slice(-30);
+    if (existing?.scheduleConfirmed) saved.scheduleConfirmed = false;
+  }
+  await atomicWrite(path.join(TOPICS_DIR, saved.id + '.json'), saved);
+  return saved;
+}
+importService = require('./imports-server')({ dataDir: DATA_DIR, passwordEnabled: !!ACCESS_PASSWORD,
+  lock: withMutationLock, atomicWrite, readTopics: readAllTopics, saveTopic: persistTopic, broadcast: broadcastSSE });
+app.use('/api/integrations/feishu', importService.admin);
+
 // ── GET /api/data — 读取全部数据（兼容旧格式）──
 app.get('/api/data', async (req, res) => {
   try {
@@ -217,16 +243,9 @@ app.post('/api/topic/:id', async (req, res) => {
         return { conflict: true, existing: null, serverVersion: 0 };
       }
 
-      const saved = { ...topic, _version: clientVersion + 1, updatedAt: new Date().toISOString() };
-      saved.scheduleHistory = (Array.isArray(existing?.scheduleHistory) ? existing.scheduleHistory : []).slice(-30);
-      const before = Workflow.snapshot(existing || {}), after = Workflow.snapshot(saved);
-      const changes = Workflow.diff(before, after);
-      if (changes.length) {
-        saved.scheduleHistory.push({ id: crypto.randomUUID(), at: saved.updatedAt, before, after, changes });
-        saved.scheduleHistory = saved.scheduleHistory.slice(-30);
-        if (existing?.scheduleConfirmed) saved.scheduleConfirmed = false;
-      }
-      await atomicWrite(topicFile, saved);
+      ImportModel.businessFieldsValid(topic);
+      ImportModel.protectedMetadata(existing, topic);
+      const saved = await persistTopic(existing, topic);
       return { saved };
     });
 
@@ -247,7 +266,7 @@ app.post('/api/topic/:id', async (req, res) => {
 
     res.json({ success: true, _version: saved._version, updatedAt: saved.updatedAt, scheduleHistory: saved.scheduleHistory, scheduleConfirmed: saved.scheduleConfirmed });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(err.status || 500).json({ success: false, error: err.message });
   }
 });
 

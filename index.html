@@ -121,6 +121,7 @@
     }
   </style>
 <link rel="stylesheet" href="/workbench.css">
+<link rel="stylesheet" href="/imports.css">
 </head>
 <body class="min-h-screen flex">
 
@@ -158,6 +159,7 @@
       </button>
     </div>
     <div id="topic-list" class="flex-1 overflow-y-auto px-2 pb-2"></div>
+    <button onclick="PocketImports.open()" class="editor-button mx-3 mb-3">从飞书项目导入</button>
     <div class="p-3 border-t border-beige-200 space-y-2">
       <button onclick="openSettings()" class="w-full py-1.5 text-xs text-coffee-light hover:text-coffee border border-beige-300 rounded-lg hover:bg-beige-200 transition-colors flex items-center justify-center gap-1">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
@@ -451,6 +453,7 @@
   <script src="/workflow.js"></script>
   <script src="/workbench.js"></script>
   <script src="/editor.js"></script>
+  <script src="/imports.js"></script>
   <script>
   const CATEGORIES = ['内容', '广告'];
   const PLATFORMS = ['哔哩哔哩', '抖音', '小红书', '视频号', '微信', '微博'];
@@ -1589,6 +1592,7 @@
         <div class="flex-1 min-w-0 cursor-pointer" onclick="selectTopic('${topic.id}')">
           <span class="inline-block bg-sage-bg text-sage-text text-xs rounded px-2 py-0.5 font-medium mb-1.5">${escapeHtml(topic.category || '内容')}</span>
           <h4 class="text-base font-bold text-coffee truncate">${escapeHtml(topic.title)}</h4>
+          <p class="project-business-summary">${escapeHtml(PocketWorkflow.businessText(topic))}</p>
           <div class="time-meta mt-1">创建 ${shortTime(topic.createdAt)} · 编辑 ${shortTime(topic.updatedAt)}</div>
         </div>
         <div class="flex items-start gap-2 flex-shrink-0 ml-2">
@@ -2948,7 +2952,7 @@
     if(wrapper)wrapper.scrollLeft=x;
   }
   // ── 初始化 ──
-  loadData().then(() => { switchView('calendar'); connectSSE(); });
+  loadData().then(() => { switchView('calendar'); connectSSE(); PocketImports.start(); });
   setInterval(refreshWorkflowClock,30000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshWorkflowClock();});
   document.addEventListener('keydown', e => {

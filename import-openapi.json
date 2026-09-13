@@ -1,0 +1,795 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Pocket OS Agent Import API",
+    "version": "1.9.10",
+    "description": "单向飞书导入。Bearer Token 仅允许提交待确认草稿，不能调用管理接口；由用户在 Pocket OS 选择绑定/新建并确认。需先配置 POCKET_OS_PASSWORD，管理页面生成独立凭证。"
+  },
+  "servers": [
+    {
+      "url": "/api/agent/v1"
+    }
+  ],
+  "security": [
+    {
+      "AgentToken": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "AgentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "poi_ 前缀专用凭证；禁止在 URL、提示词和日志中传递"
+      }
+    },
+    "schemas": {
+      "Import": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schemaVersion": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "source": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host": {
+                "type": "string",
+                "enum": [
+                  "project.feishu.cn",
+                  "meegle.com"
+                ]
+              },
+              "projectKey": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,100}$"
+              },
+              "workItemType": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,100}$"
+              },
+              "workItemId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,100}$"
+              },
+              "templateId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,100}$"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https://"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "fetchedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "host",
+              "projectKey",
+              "workItemType",
+              "workItemId",
+              "templateId",
+              "url",
+              "updatedAt",
+              "fetchedAt"
+            ]
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "projectCode": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "formats": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "横屏",
+                        "竖屏"
+                      ]
+                    },
+                    "uniqueItems": true,
+                    "maxItems": 2
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "advertising": {
+                "enum": [
+                  "有广告",
+                  "无广告",
+                  null
+                ]
+              },
+              "cooperationPlatforms": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 60
+                    },
+                    "maxItems": 20
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "platforms": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 60
+                    },
+                    "maxItems": 20
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "outlineDocument": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "scriptDocument": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "publishDate": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": []
+          },
+          "fieldKeys": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,100}$"
+              },
+              "projectCode": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,100}$"
+              },
+              "formats": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,100}$"
+              },
+              "advertising": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,100}$"
+              },
+              "cooperationPlatforms": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,100}$"
+              },
+              "platforms": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,100}$"
+              },
+              "outlineDocument": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,100}$"
+              },
+              "scriptDocument": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,100}$"
+              },
+              "publishDate": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,100}$"
+              }
+            },
+            "required": []
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "enum": [
+                    "outline",
+                    "script",
+                    "shoot",
+                    "acopy",
+                    "bcopy",
+                    "publish"
+                  ]
+                },
+                "sourceNodeId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{1,100}$"
+                },
+                "sourceName": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "ranges": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "start": {
+                        "type": "string",
+                        "format": "date"
+                      },
+                      "end": {
+                        "type": "string",
+                        "format": "date"
+                      }
+                    },
+                    "required": [
+                      "start",
+                      "end"
+                    ]
+                  },
+                  "maxItems": 30,
+                  "description": "仅 shoot 支持多段，其余最多一段；publish 为单日；禁止合并拍摄间隔。"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "not_started",
+                    "doing",
+                    "finished",
+                    "unknown"
+                  ]
+                },
+                "actualStart": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "actualEnd": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "key",
+                "sourceNodeId",
+                "sourceName",
+                "ranges",
+                "status"
+              ]
+            },
+            "maxItems": 6
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "source",
+          "fields",
+          "fieldKeys",
+          "nodes"
+        ]
+      }
+    }
+  },
+  "paths": {
+    "/schema": {
+      "get": {
+        "operationId": "getPocketImportSchema",
+        "summary": "获取当前规范",
+        "responses": {
+          "200": {
+            "description": "OpenAPI 规范",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/imports": {
+      "post": {
+        "operationId": "submitPocketImportDraft",
+        "summary": "提交候选项目，不写入项目",
+        "description": "fields 中每个字段必须提供对应 fieldKeys（title 默认 name）；空值仅作为清空候选，必须由人额外确认。来源字段/节点实际 ID 必须来自元数据，不要按名字猜测。时间戳先按项目时区转换为日期。请求上限 64KB，待确认最多 250 条。相同键重试需使用相同内容，读取新版本用新键。",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Import"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "同一请求重试，返回原记录；不会重复建项目",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "新草稿，包含 id、status、reviewPath、receivedAt、source",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/imports/{id}": {
+      "get": {
+        "operationId": "getPocketImportResult",
+        "summary": "查询当前凭证提交的记录状态",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^fi_[a-f0-9]{40}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "status 为 pending/applied/dismissed；applied 的 result 包含 topicId/version/appliedAt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mappings": {
+      "get": {
+        "operationId": "getApprovedFeishuMapping",
+        "summary": "查询已由人确认的模板字段/节点映射，不包含项目内容",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "project.feishu.cn",
+              "enum": [
+                "project.feishu.cn",
+                "meegle.com"
+              ]
+            }
+          },
+          {
+            "name": "projectKey",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,100}$"
+            }
+          },
+          {
+            "name": "workItemType",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,100}$"
+            }
+          },
+          {
+            "name": "templateId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,100}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "mapping 为 field:xxx 或 step:xxx 到来源 ID 的映射；conflicts 非空时应先让用户确认，不能自动选一个",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -45,6 +45,17 @@ app.use(express.json({ limit: '10mb' }));
 app.use((req, res, next) => {
   if (/^Bearer\s/i.test(req.headers.authorization || '')) return res.status(403).json({ error: 'Agent 凭证不能访问管理接口' });
   if (!ACCESS_PASSWORD) { req.accessRole = 'editor'; return next(); }
+
+  // 只读看板路径列表
+  const viewPaths = ['/view','/canbox','/view.webmanifest','/api/view/data','/api/view/events','/schedule.js','/workflow.js','/timeline.js','/viewer.js','/viewer.css','/icon-192.png','/icon-512.png','/apple-touch-icon.png','/favicon.ico'];
+  const isViewPath = ['GET','HEAD'].includes(req.method) && viewPaths.includes(req.path);
+
+  // 如果没有设置查看密码，只读看板可以免密码访问
+  if (!VIEW_PASSWORD && isViewPath) {
+    req.accessRole = 'viewer';
+    return next();
+  }
+
   const header = req.headers.authorization || '';
   const encoded = header.startsWith('Basic ') ? header.slice(6) : '';
   let password = '';
@@ -56,8 +67,7 @@ app.use((req, res, next) => {
   if (matches(ACCESS_PASSWORD)) { req.accessRole = 'editor'; return next(); }
   if (matches(VIEW_PASSWORD)) {
     req.accessRole = 'viewer';
-    const allowed = ['/view','/canbox','/view.webmanifest','/api/view/data','/api/view/events','/schedule.js','/workflow.js','/timeline.js','/viewer.js','/viewer.css','/icon-192.png','/icon-512.png','/apple-touch-icon.png','/favicon.ico'];
-    if (['GET','HEAD'].includes(req.method) && allowed.includes(req.path)) return next();
+    if (isViewPath) return next();
     return res.status(403).json({ error: '查看权限不能访问管理功能或修改项目' });
   }
   res.setHeader('WWW-Authenticate', 'Basic realm="Pocket OS"');

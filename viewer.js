@@ -146,6 +146,16 @@
     document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));
     $('date-controls').hidden=!['calendar','panorama'].includes(view);
     $('calendar-mode').hidden=view!=='calendar'; $('zoom').hidden=view!=='panorama';
+
+    // 全屏+全景时间轴模式下隐藏筛选区域
+    const isFullscreenPanorama = document.fullscreenElement && view === 'panorama';
+    const filtersSection = document.querySelector('.filters');
+    const header = document.querySelector('header');
+    const nav = document.querySelector('nav');
+    if (filtersSection) filtersSection.style.display = isFullscreenPanorama ? 'none' : '';
+    if (header) header.style.display = isFullscreenPanorama ? 'none' : '';
+    if (nav) nav.style.display = isFullscreenPanorama ? 'none' : '';
+
     const items=filtered(); $('count').textContent=`${items.length} 个项目`;
     $('content').innerHTML=items.length ? ({overview,cards,calendar,panorama}[view])(items) : `<p class="empty">${loaded?'没有符合条件的项目。可清除筛选，或在工作台创建项目。':'尚未获取数据，请检查连接后刷新。'}</p>`;
     const next=document.querySelector('#content .calendar-scroll');if(next){next.scrollLeft=position[0];next.scrollTop=position[1];}
@@ -199,10 +209,11 @@
   $('prev').onclick=()=>shift(-1);$('next').onclick=()=>shift(1);
   $('fullscreen').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch{$('fullscreen').textContent='当前浏览器不支持全屏';}};
   function connect(){if(source)source.close();source=new EventSource('/api/view/events');source.addEventListener('connected',()=>{live=true;load();});source.addEventListener('changed',load);source.onerror=()=>{live=false;status(true);};}
-  let timer=setInterval(()=>{if(!document.hidden)load();},60000);
+  // 每两小时自动刷新一次（7200000毫秒）
+  let timer=setInterval(()=>{if(!document.hidden)load();},7200000);
   document.addEventListener('visibilitychange',()=>{if(document.hidden){source?.close();source=null;live=false;}else{load();connect();}});
   window.addEventListener('pagehide',()=>{clearInterval(timer);source?.close();});
-  window.addEventListener('pageshow',e=>{if(e.persisted){timer=setInterval(()=>{if(!document.hidden)load();},60000);load();connect();}});
+  window.addEventListener('pageshow',e=>{if(e.persisted){timer=setInterval(()=>{if(!document.hidden)load();},7200000);load();connect();}});
   let resizeFrame;window.addEventListener('resize',()=>{cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>{document.querySelectorAll('[data-timeline-key]').forEach(root=>{if(root.clientWidth)drawTimeline(root);});});});
   load();connect();
 })();

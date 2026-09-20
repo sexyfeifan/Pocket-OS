@@ -21,15 +21,89 @@ function renderWorkflowOverview() {
   box.innerHTML=`<details ${open?'open':''}><summary>工作概览 · 按实际日期查看进展</summary><p class="workflow-help">未填日期不代表排期未完成。下一节点按日期查找，跳过未设置日期的节点；并行节点分别显示。提醒不会自动改期。</p><div class="attention-grid">${entries.map(({title,rows,empty})=>`<section><h4>${title} · ${rows.length}</h4>${rows.slice(0,5).map(r=>`<button onclick="selectTopic('${r.id}')">${escapeHtml(r.title)}<small>${escapeHtml(r.text)}</small></button>`).join('')}${!rows.length?`<p class="workflow-help">${empty}</p>`:''}${rows.length>5?'<a href="/view" target="_blank" rel="noopener" class="workflow-help">在只读看板查看全部 ↗</a>':''}</section>`).join('')}</div></details>`;
 }
 function workflowEditorHtml(t) {
-  return `<div class="project-top-actions"><button class="editor-button primary-action" onclick="${t.completed?'uncompleteProject':'completeProject'}('${t.id}')">${t.completed?'撤回项目完成':'项目完成并归档'}</button><button class="editor-button" onclick="duplicateProject('${t.id}')">复制为新项目</button></div>
-  <details id="project-management" data-remember><summary>项目管理 · ${PocketWorkflow.mode(t)==='calendar'?'按日期自动推进':'手动确认完成'}</summary><div class="workflow-fields"><label>项目状态<select aria-label="项目状态" onchange="setLifecycle('${t.id}',this.value)">${Object.entries(PocketWorkflow.lifecycleLabels).map(([k,v])=>`<option value="${k}" ${PocketWorkflow.lifecycle(t)===k?'selected':''}>${v}</option>`).join('')}</select></label><span id="schedule-status" class="workflow-help">排期：${escapeHtml(PocketWorkflow.scheduleStatus(t))}</span><button class="editor-button" onclick="confirmNewSchedule('${t.id}')">确认当前排期</button><button class="editor-button" onclick="openProgressionSettings('${t.id}')">推进方式 / 时区</button></div>
-  <details id="project-adjustment" data-remember><summary>项目整体调整</summary><div class="workflow-fields"><label>调整原因<input id="pending-reason" data-draft aria-label="项目调整原因" value="${escapeHtml(t.pendingReason||'')}"></label><button class="editor-button" onclick="markProjectPending('${t.id}')">标记调整中</button></div></details>
-  <div class="workflow-fields"><button class="editor-button" onclick="exportTml('${t.id}')">下载 TML</button><button class="editor-button" onclick="copyTml('${t.id}')">复制 TML</button><button class="editor-button" onclick="${t.completed?'uncompleteProject':'completeProject'}('${t.id}')">${t.completed?'撤回项目完成':'项目完成并归档'}</button><button class="editor-button danger-action" onclick="deleteTopic('${t.id}')">删除项目</button></div><p class="workflow-help">节点结束不会自动归档项目；旧项目默认保持手动规则。模式切换会先预览结果。</p></details>`;
+  const mode = PocketWorkflow.mode(t);
+  const status = PocketWorkflow.scheduleStatus(t);
+  return `
+  <div class="section-group">
+    <div class="section-group-title">项目操作</div>
+    <div class="action-group action-group--lifecycle">
+      <button class="editor-button primary-action" onclick="${t.completed?'uncompleteProject':'completeProject'}('${t.id}')">${t.completed?'撤回项目完成':'项目完成并归档'}</button>
+      <button class="editor-button" onclick="duplicateProject('${t.id}')">复制为新项目</button>
+    </div>
+  </div>
+
+  <details id="project-management" class="accordion-row" data-remember>
+    <summary class="accordion-row__title">
+      <span class="accordion-row__label">项目管理</span>
+      <span class="accordion-row__meta">${mode==='calendar'?'按日期自动推进':'手动确认完成'} · ${escapeHtml(status)}</span>
+    </summary>
+    <div class="settings-grid">
+      <div class="settings-cell">
+        <label class="settings-cell__label">项目状态</label>
+        <select class="settings-cell__control" aria-label="项目状态" onchange="setLifecycle('${t.id}',this.value)">${Object.entries(PocketWorkflow.lifecycleLabels).map(([k,v])=>`<option value="${k}" ${PocketWorkflow.lifecycle(t)===k?'selected':''}>${v}</option>`).join('')}</select>
+      </div>
+      <div class="settings-cell">
+        <label class="settings-cell__label">排期</label>
+        <span class="settings-cell__value">${escapeHtml(status)}</span>
+        <button class="settings-cell__action" onclick="confirmNewSchedule('${t.id}')">确认当前排期</button>
+      </div>
+      <div class="settings-cell">
+        <label class="settings-cell__label">推进方式</label>
+        <span class="settings-cell__value">${mode==='calendar'?'按日期自动推进':'手动确认完成'}</span>
+        <button class="settings-cell__action" onclick="openProgressionSettings('${t.id}')">修改</button>
+      </div>
+      <div class="settings-cell">
+        <label class="settings-cell__label">时区</label>
+        <span class="settings-cell__value">${escapeHtml(PocketWorkflow.zone(t))}</span>
+        <button class="settings-cell__action" onclick="openProgressionSettings('${t.id}')">修改</button>
+      </div>
+    </div>
+  </details>
+
+  <details id="project-adjustment" class="accordion-row" data-remember>
+    <summary class="accordion-row__title">
+      <span class="accordion-row__label">项目整体调整</span>
+    </summary>
+    <div class="workflow-fields">
+      <label>调整原因<input id="pending-reason" data-draft aria-label="项目调整原因" value="${escapeHtml(t.pendingReason||'')}"></label>
+      <button class="editor-button" onclick="markProjectPending('${t.id}')">标记调整中</button>
+    </div>
+  </details>
+
+  <div class="section-group">
+    <div class="action-group action-group--normal">
+      <button class="editor-button" onclick="exportTml('${t.id}')">下载 TML</button>
+      <button class="editor-button" onclick="copyTml('${t.id}')">复制 TML</button>
+    </div>
+    <div class="action-group action-group--danger">
+      <button class="editor-button danger-action" onclick="deleteTopic('${t.id}')">删除项目</button>
+    </div>
+    <p class="workflow-help">节点结束不会自动归档项目；旧项目默认保持手动规则。模式切换会先预览结果。</p>
+  </div>`;
 }
 function workflowHistoryHtml(t) {
   const history=[...(t.scheduleHistory||[])].reverse();
-  return `<details class="workflow-history" id="workflow-history"><summary>排期变更记录 · 最近 ${history.length} 次已保存变更</summary><p class="workflow-help">记录从 v1.9.7 开始积累，刷新后保留。恢复前可选择节点；已有节点的名称、完成状态和其他项目字段不会被回退。</p>${history.map(h=>`<div class="history-entry"><time>${escapeHtml(new Date(h.at).toLocaleString('zh-CN'))}</time>${(h.changes||[]).map(c=>`<p><strong>${escapeHtml(c.name)}</strong>：${c.added?'新增节点 · ':c.removed?'删除节点 · ':''}${escapeHtml(PocketWorkflow.rangeText(c.before))} → ${escapeHtml(PocketWorkflow.rangeText(c.after))}</p>`).join('')}<button class="editor-button" onclick="previewHistory('${t.id}','${h.id}')">预览恢复修改前</button></div>`).join('')||'<p class="workflow-help">暂无记录；下次保存排期变化后会出现在这里。</p>'}</details>
-  <details class="workflow-history"><summary>保存为项目模板</summary><p class="workflow-help">只保留工序结构和准备事项，不包含日期、完成状态、备注或通告绑定。</p><div class="workflow-fields"><input id="template-name" data-draft aria-label="模板名称" placeholder="输入模板名称"><button class="editor-button" onclick="saveProjectTemplate('${t.id}')">保存模板</button></div><div>${(appState.settings.projectTemplates||[]).map(p=>`<p class="workflow-help">${escapeHtml(p.name)} <button onclick="deleteProjectTemplate('${p.id}')">删除模板</button></p>`).join('')}</div></details>`;
+  return `
+  <details id="workflow-history" class="accordion-row" data-remember>
+    <summary class="accordion-row__title">
+      <span class="accordion-row__label">排期变更记录</span>
+      <span class="accordion-row__meta">最近 ${history.length} 次已保存变更</span>
+    </summary>
+    <p class="workflow-help">记录从 v1.9.7 开始积累，刷新后保留。恢复前可选择节点；已有节点的名称、完成状态和其他项目字段不会被回退。</p>
+    ${history.map(h=>`<div class="history-entry"><time>${escapeHtml(new Date(h.at).toLocaleString('zh-CN'))}</time>${(h.changes||[]).map(c=>`<p><strong>${escapeHtml(c.name)}</strong>：${c.added?'新增节点 · ':c.removed?'删除节点 · ':''}${escapeHtml(PocketWorkflow.rangeText(c.before))} → ${escapeHtml(PocketWorkflow.rangeText(c.after))}</p>`).join('')}<button class="editor-button" onclick="previewHistory('${t.id}','${h.id}')">预览恢复修改前</button></div>`).join('')||'<p class="workflow-help">暂无记录；下次保存排期变化后会出现在这里。</p>'}
+  </details>
+
+  <details class="accordion-row" data-remember>
+    <summary class="accordion-row__title">
+      <span class="accordion-row__label">保存为项目模板</span>
+    </summary>
+    <p class="workflow-help">只保留工序结构和准备事项，不包含日期、完成状态、备注或通告绑定。</p>
+    <div class="workflow-fields">
+      <input id="template-name" data-draft aria-label="模板名称" placeholder="输入模板名称">
+      <button class="editor-button" onclick="saveProjectTemplate('${t.id}')">保存模板</button>
+    </div>
+    <div>${(appState.settings.projectTemplates||[]).map(p=>`<p class="workflow-help">${escapeHtml(p.name)} <button onclick="deleteProjectTemplate('${p.id}')">删除模板</button></p>`).join('')}</div>
+  </details>`;
 }
 function refreshWorkflowStatus(t) {
   const el=document.getElementById('schedule-status');if(el)el.textContent='排期：'+PocketWorkflow.scheduleStatus(t);

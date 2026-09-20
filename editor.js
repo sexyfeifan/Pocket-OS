@@ -65,13 +65,56 @@ function projectEditorHtml(t) {
   <p id="edit-progress" class="workflow-help">${escapeHtml(W.progressText(t))}</p><p class="workflow-help">${W.mode(t)==='calendar'?'结束日过后自动显示“按计划结束”，不代表人工验收。':'此项目保持手动确认完成。'} · 时区 ${escapeHtml(W.zone(t))}</p>
   <div class="node-list">${t.productionSteps.map((s,i)=>editorStepHtml(t,s,i)).join('')}</div>
   <form onsubmit="event.preventDefault();addCustomStep('${t.id}')" class="workflow-fields"><input id="new-step-name" data-draft aria-label="新工序名称" placeholder="新节点，如：审片、调色"><button class="editor-button">添加节点</button></form></section>
-  <details id="prep-section" data-remember ${tasks.length?'open':''}><summary>准备事项 · ${tasks.length} 项</summary><form onsubmit="event.preventDefault();addPrepFromInput('${t.id}')" class="workflow-fields"><input id="prep-input-${t.id}" data-draft aria-label="新增准备事项" placeholder="输入事项，回车添加"><button class="editor-button">添加事项</button></form>${tasks.map((p,i)=>`<div class="prep-row"><input type="checkbox" aria-label="完成准备事项${i+1}" ${p.done?'checked':''} onchange="togglePrep('${t.id}',${i})"><input aria-label="准备事项${i+1}" value="${escapeHtml(p.text)}" oninput="updatePrepText('${t.id}',${i},this.value)"><button class="editor-button" onclick="deletePrep('${t.id}',${i})">删除</button></div>`).join('')}</details>
-  <details id="project-notes" data-remember><summary>日期备注 · ${Object.keys(t.notes||{}).length} 条</summary><p class="workflow-help">点击项目日历的空日期可添加或修改备注。</p>${Object.entries(t.notes||{}).sort().map(([d,n])=>`<p class="workflow-help">${escapeHtml(d)} · ${escapeHtml(n)}</p>`).join('')}</details>
+  <details id="prep-section" class="accordion-row" data-remember ${tasks.length?'open':''}>
+    <summary class="accordion-row__title">
+      <span class="accordion-row__label">准备事项</span>
+      <span class="accordion-row__meta">${tasks.length} 项</span>
+    </summary>
+    <form onsubmit="event.preventDefault();addPrepFromInput('${t.id}')" class="workflow-fields">
+      <input id="prep-input-${t.id}" data-draft aria-label="新增准备事项" placeholder="输入事项，回车添加">
+      <button class="editor-button">添加事项</button>
+    </form>
+    ${tasks.map((p,i)=>`<div class="prep-row"><input type="checkbox" aria-label="完成准备事项${i+1}" ${p.done?'checked':''} onchange="togglePrep('${t.id}',${i})"><input aria-label="准备事项${i+1}" value="${escapeHtml(p.text)}" oninput="updatePrepText('${t.id}',${i},this.value)"><button class="editor-button" onclick="deletePrep('${t.id}',${i})">删除</button></div>`).join('')}
+  </details>
+
+  <details id="project-notes" class="accordion-row" data-remember>
+    <summary class="accordion-row__title">
+      <span class="accordion-row__label">日期备注</span>
+      <span class="accordion-row__meta">${Object.keys(t.notes||{}).length} 条</span>
+    </summary>
+    <p class="workflow-help">点击项目日历的空日期可添加或修改备注。</p>
+    ${Object.entries(t.notes||{}).sort().map(([d,n])=>`<p class="workflow-help">${escapeHtml(d)} · ${escapeHtml(n)}</p>`).join('')}
+  </details>
+
   ${typeof PocketImports==='object'?PocketImports.bindingHtml(t):''}
-  ${cb?`<details id="bound-canbox" data-remember><summary>已绑定拍摄通告</summary><p class="workflow-help">${escapeHtml(PocketWorkflow.rangeText(cb.shootSegments||cb.segments||detectShootSegments(cb.dates||[])))}</p>${canboxMetadata(cb)}<div class="workflow-fields"><button class="editor-button" onclick="importShootDates('${t.id}')">预览应用拍摄日期</button><button class="editor-button" onclick="unlinkCanbox('${t.id}')">解除绑定</button></div></details>`:''}
-  ${t.tmlNote?`<details id="project-tml" data-remember><summary>TML 原文</summary><pre id="tml-note-display" class="workflow-help">${escapeHtml(t.tmlNote)}</pre><button class="editor-button" onclick="editTmlNote('${t.id}')">编辑原文</button></details>`:''}
-  ${workflowEditorHtml(t)}<div id="history-container">${workflowHistoryHtml(t)}</div>
-  <p class="time-meta">创建 ${shortTime(t.createdAt)} · 修改 ${shortTime(t.updatedAt)}</p></article>`;
+  ${cb?`<details id="bound-canbox" class="accordion-row" data-remember>
+    <summary class="accordion-row__title">
+      <span class="accordion-row__label">已绑定拍摄通告</span>
+    </summary>
+    <p class="workflow-help">${escapeHtml(PocketWorkflow.rangeText(cb.shootSegments||cb.segments||detectShootSegments(cb.dates||[])))}</p>
+    ${canboxMetadata(cb)}
+    <div class="workflow-fields">
+      <button class="editor-button" onclick="importShootDates('${t.id}')">预览应用拍摄日期</button>
+      <button class="editor-button" onclick="unlinkCanbox('${t.id}')">解除绑定</button>
+    </div>
+  </details>`:''}
+
+  ${t.tmlNote?`<details id="project-tml" class="accordion-row" data-remember>
+    <summary class="accordion-row__title">
+      <span class="accordion-row__label">TML 原文</span>
+    </summary>
+    <pre id="tml-note-display" class="workflow-help">${escapeHtml(t.tmlNote)}</pre>
+    <button class="editor-button" onclick="editTmlNote('${t.id}')">编辑原文</button>
+  </details>`:''}
+
+  ${workflowEditorHtml(t)}
+  <div id="history-container">${workflowHistoryHtml(t)}</div>
+
+  <div class="metadata-bar">
+    <span>创建 ${shortTime(t.createdAt)}</span>
+    <span>修改 ${shortTime(t.updatedAt)}</span>
+  </div>
+</article>`;
 }
 function focusSchedule(){document.querySelector('.node-list input[type=date]')?.focus();}
 function quickStepAction(id,key) {

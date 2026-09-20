@@ -14,3 +14,26 @@
 dialog{width:min(1160px,96vw)}.dialog-top{position:sticky;top:-24px;padding:8px 0;background:var(--bg);z-index:10}.detail-project-card{padding:20px;background:white;border:1px solid var(--line);border-radius:14px}.detail-project-card .outlook{padding:10px 12px;background:var(--soft);border-radius:9px;margin-bottom:14px;overflow-wrap:anywhere}.detail-project-card .badge{margin-right:5px}#detail .timeline-scroll{max-height:48vh}
 @media(max-width:640px){.timeline-tools{gap:6px}.timeline-tools strong{width:100%}.timeline-tools button{font-size:12px;padding:6px 8px}.timeline-tools label{width:100%}.timeline-empty{left:125px;width:175px}.detail-project-card{padding:14px}.dialog-top{top:-18px}}
 .viewer-node-state{display:block;font-size:10px;font-weight:400;color:var(--muted);white-space:normal}.node time{overflow-wrap:anywhere}.time-label .viewer-node-state{color:var(--brand)}
+
+/* ===== 时间轴单元格统一 ===== */
+.timeline-head{display:flex;align-items:stretch}
+.timeline-head .timeline-name{display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.timeline-date{display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;min-width:60px}
+.timeline-row{display:flex;align-items:stretch;min-height:80px}
+.timeline-row>.timeline-name{display:flex;align-items:center;padding:0 12px}
+.tracks{display:flex;flex-direction:column;gap:4px;padding:8px 0}
+
+/* ===== 全屏模式优化 ===== */
+:fullscreen main{padding:16px 2vw}
+:fullscreen .timeline-panel{margin:8px 0}
+:fullscreen .timeline-tools{display:none}
+:fullscreen .help{display:none}
+:fullscreen .filters{display:none}
+:fullscreen header{display:none}
+:fullscreen nav{display:none}
+:fullscreen .heading{display:none}
+:fullscreen footer{display:none}
+
+/* ===== 确保内容完整显示 ===== */
+.time-label{max-width:180px;word-wrap:break-word;overflow-wrap:anywhere}
+.time-bar{min-width:40px;flex-shrink:0}

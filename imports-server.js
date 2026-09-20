@@ -8,7 +8,14 @@ const M = require('./import-model');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const route = fn => (req, res) => Promise.resolve(fn(req, res)).catch(error => {
   if (!error.status) console.error('Import service:', error.message);
-  res.status(error.status || 500).json({ error: error.status ? error.message : '导入服务暂时失败，请重试；相同请求不会重复创建项目' });
+  // 429 错误时返回 Retry-After 头
+  if (error.status === 429 && error.retryAfter) {
+    res.setHeader('Retry-After', error.retryAfter);
+  }
+  res.status(error.status || 500).json({
+    error: error.status ? error.message : '导入服务暂时失败，请重试；相同请求不会重复创建项目',
+    ...(error.retryAfter ? { retryAfter: error.retryAfter } : {})
+  });
 });
 
 module.exports = function createImportService({ dataDir, passwordEnabled, lock, atomicWrite, readTopics, saveTopic, broadcast }) {
@@ -41,10 +48,22 @@ module.exports = function createImportService({ dataDir, passwordEnabled, lock, 
   function rate(key, max) {
     const now = Date.now();
     for (const [id, entry] of rates) if (entry.until < now) rates.delete(id);
-    if (!rates.has(key) && rates.size >= 500) M.fail('请求过多，请稍后重试', 429);
+    if (!rates.has(key) && rates.size >= 500) {
+      const error = new Error('请求过多，请稍后重试');
+      error.status = 429;
+      error.retryAfter = 60;
+      throw error;
+    }
     const value = rates.get(key) || { until: now + 60000, count: 0 };
-    if (++value.count > max) M.fail('请求过多，请一分钟后重试', 429);
+    if (++value.count > max) {
+      const retryAfter = Math.ceil((value.until - now) / 1000);
+      const error = new Error('请求过多，请 ' + retryAfter + ' 秒后重试');
+      error.status = 429;
+      error.retryAfter = retryAfter;
+      throw error;
+    }
     rates.set(key, value);
+    return { remaining: max - value.count, resetAt: value.until };
   }
   async function authenticate(req) {
     requireProtection();
@@ -55,10 +74,10 @@ module.exports = function createImportService({ dataDir, passwordEnabled, lock, 
       M.fail('需要有效的 Agent Bearer Token', 401);
     return config;
   }
-  function summary(item) {
+  function summary(item, isLatest = true) {
     return { id: item.id, status: item.status, receivedAt: item.receivedAt, source: item.payload.source,
       title: item.payload.fields.title || '未提供项目名称', projectCode: item.payload.fields.projectCode || '',
-      ...(item.result ? { result: item.result } : {}) };
+      isLatest, ...(item.result ? { result: item.result } : {}) };
   }
   function receipt(topics, draftId) {
     for (const topic of topics) {
@@ -117,13 +136,37 @@ module.exports = function createImportService({ dataDir, passwordEnabled, lock, 
 
   agent.use((req, res, next) => {
     route(async () => {
-      rate('ip:' + req.socket.remoteAddress, 240);
+      const ipRate = rate('ip:' + req.socket.remoteAddress, 240);
       req.agentIdentity = (await authenticate(req)).id;
-      rate('token:' + req.agentIdentity, 90);
+      const tokenRate = rate('token:' + req.agentIdentity, 90);
+      // 在响应头中添加配额信息
+      res.setHeader('X-RateLimit-IP-Limit', '240');
+      res.setHeader('X-RateLimit-IP-Remaining', ipRate.remaining);
+      res.setHeader('X-RateLimit-IP-Reset', Math.ceil(ipRate.resetAt / 1000));
+      res.setHeader('X-RateLimit-Token-Limit', '90');
+      res.setHeader('X-RateLimit-Token-Remaining', tokenRate.remaining);
+      res.setHeader('X-RateLimit-Token-Reset', Math.ceil(tokenRate.resetAt / 1000));
       next();
     })(req, res);
   });
   agent.get('/schema', (req, res) => res.json(require('./import-openapi.json')));
+  // dry-run 校验接口：提交前先校验，避免试错
+  agent.post('/imports/validate', route(async (req, res) => {
+    try {
+      const payload = M.normalize(req.body);
+      res.json({
+        valid: true,
+        message: '数据格式校验通过',
+        normalizedPayload: payload
+      });
+    } catch (error) {
+      res.json({
+        valid: false,
+        error: error.message,
+        hint: '请根据错误信息修正后重试'
+      });
+    }
+  }));
   agent.post('/imports', route(async (req, res) => {
     const key = req.headers['idempotency-key'];
     if (typeof key !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/.test(key)) M.fail('需要 Idempotency-Key 请求头（1～128 个字母、数字或 _ . : -）');
@@ -150,22 +193,157 @@ module.exports = function createImportService({ dataDir, passwordEnabled, lock, 
       if (value.owner !== req.agentIdentity) M.fail('该导入不属于当前凭证', 403);
       return recover(value, await readTopics());
     });
-    res.json(summary(item));
+    // 检查是否是最新草稿（同一来源的最新 pending 草稿）
+    const sourceKey = M.sourceKey(item.payload.source);
+    const allDrafts = await drafts();
+    const sameSourceDrafts = allDrafts.filter(d =>
+      d.owner === req.agentIdentity &&
+      d.status === 'pending' &&
+      M.sourceKey(d.payload.source) === sourceKey
+    ).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+    const isLatest = sameSourceDrafts.length === 0 || sameSourceDrafts[0].id === item.id;
+    res.json(summary(item, isLatest));
   }));
   agent.get('/mappings', route(async (req, res) => {
     const source = { host: req.query.host || 'project.feishu.cn' };
     if (!['project.feishu.cn', 'meegle.com'].includes(source.host)) M.fail('来源站点无效');
     for (const key of ['projectKey', 'workItemType', 'templateId']) source[key] = M.id(req.query[key], key);
+    // 首先从已保存的映射中查询
+    const mappingKey = [source.host, source.projectKey, source.workItemType, source.templateId].join('/');
+    const mappingFile = path.join(directory, 'mappings', mappingKey + '.json');
+    const savedMapping = await readJson(mappingFile, null);
+    if (savedMapping) {
+      return res.json({
+        template: source,
+        mapping: savedMapping.mapping,
+        conflicts: [],
+        message: '使用已保存的映射配置',
+        source: 'saved'
+      });
+    }
+    // 如果没有保存的映射，从历史导入中查询
     const bindings = (await lock(readTopics)).map(t => t.feishuBinding).filter(b => b && M.templateKey(b.source) === M.templateKey(source));
     const mapping = {}, conflicts = new Set();
     for (const binding of bindings) for (const [key, value] of Object.entries(binding.mapping || {})) {
       if (mapping[key] && mapping[key] !== value) conflicts.add(key);
       mapping[key] = value;
     }
-    res.json({ template: source, mapping, conflicts: [...conflicts], message: '仅为已确认的来源 ID 映射；日期和业务数据仍需从飞书重新读取。冲突字段必须由用户确认。' });
+    res.json({ template: source, mapping, conflicts: [...conflicts], message: '仅为已确认的来源 ID 映射；日期和业务数据仍需从飞书重新读取。冲突字段必须由用户确认。', source: 'history' });
+  }));
+  // 批量忽略草稿
+  agent.post('/imports/batch-dismiss', route(async (req, res) => {
+    const { draftIds } = req.body;
+    if (!Array.isArray(draftIds) || draftIds.length === 0) M.fail('请选择至少一条记录', 400);
+    if (draftIds.length > 50) M.fail('单次最多操作 50 条', 400);
+    const results = await lock(async () => {
+      const results = [];
+      for (const draftId of draftIds) {
+        try {
+          const item = await draft(draftId);
+          if (item.owner !== req.agentIdentity) {
+            results.push({ id: draftId, error: '无权操作此记录' });
+            continue;
+          }
+          if (item.status !== 'pending') {
+            results.push({ id: draftId, error: '只能操作待确认记录' });
+            continue;
+          }
+          item.status = 'dismissed';
+          await write(draftPath(item.id), item);
+          results.push({ id: draftId, success: true, action: 'dismissed' });
+        } catch (error) {
+          results.push({ id: draftId, error: error.message });
+        }
+      }
+      return results;
+    });
+    broadcast('import-update', {});
+    res.json({ results });
+  }));
+  // 写入映射
+  agent.post('/mappings', route(async (req, res) => {
+    const { host, projectKey, workItemType, templateId, mapping } = req.body;
+    if (!['project.feishu.cn', 'meegle.com'].includes(host)) M.fail('来源站点无效', 400);
+    M.id(projectKey, 'projectKey');
+    M.id(workItemType, 'workItemType');
+    M.id(templateId, 'templateId');
+    const validKeys = [
+      ...Object.keys(M.fields).map(k => 'field:' + k),
+      ...Object.keys(M.steps).map(k => 'step:' + k)
+    ];
+    for (const key of Object.keys(mapping)) {
+      if (!validKeys.includes(key)) M.fail('无效的映射键：' + key, 400);
+      if (typeof mapping[key] !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(mapping[key])) M.fail('映射值格式无效：' + key, 400);
+    }
+    const mappingKey = [host, projectKey, workItemType, templateId].join('/');
+    const mappingFile = path.join(directory, 'mappings', mappingKey + '.json');
+    await lock(async () => {
+      await write(mappingFile, {
+        host, projectKey, workItemType, templateId, mapping,
+        updatedAt: new Date().toISOString(),
+        updatedBy: req.agentIdentity
+      });
+    });
+    res.json({ success: true, message: '映射已保存' });
   }));
   agent.use((req, res) => res.status(403).json({ error: 'Agent 仅能提交导入草稿、读取自身处理结果和已确认映射，不能直接修改项目' }));
 
+  // 映射管理接口
+  admin.get('/mappings', route(async (req, res) => {
+    const mappingDir = path.join(directory, 'mappings');
+    let files; try { files = await fs.readdir(mappingDir); } catch (error) { if (error.code === 'ENOENT') files = []; else throw error; }
+    const mappings = [];
+    for (const file of files.filter(f => f.endsWith('.json'))) {
+      try {
+        const mapping = await readJson(path.join(mappingDir, file), null);
+        if (mapping) mappings.push(mapping);
+      } catch {}
+    }
+    res.json({ total: mappings.length, mappings });
+  }));
+  admin.get('/mappings/:key', route(async (req, res) => {
+    const mappingFile = path.join(directory, 'mappings', req.params.key + '.json');
+    const mapping = await readJson(mappingFile, null);
+    if (!mapping) M.fail('映射不存在', 404);
+    res.json(mapping);
+  }));
+  // 从历史导入学习映射
+  admin.post('/mappings/learn', route(async (req, res) => {
+    const { host, projectKey, workItemType, templateId } = req.body;
+    if (!host || !projectKey || !workItemType || !templateId) M.fail('缺少必要参数', 400);
+    const topics = await readTopics();
+    const templateMappings = {};
+    // 从所有已绑定的项目中收集映射
+    for (const topic of topics) {
+      if (!topic.feishuBinding) continue;
+      const binding = topic.feishuBinding;
+      if (M.templateKey(binding.source) !== [host, projectKey, workItemType, templateId].join('/')) continue;
+      // 合并映射
+      for (const [key, value] of Object.entries(binding.mapping || {})) {
+        if (templateMappings[key] && templateMappings[key] !== value) {
+          // 冲突：保留现有值，记录冲突
+          continue;
+        }
+        templateMappings[key] = value;
+      }
+    }
+    if (Object.keys(templateMappings).length === 0) {
+      return res.json({ success: false, message: '没有找到可学习的映射' });
+    }
+    // 保存映射
+    const mappingKey = [host, projectKey, workItemType, templateId].join('/');
+    const mappingFile = path.join(directory, 'mappings', mappingKey + '.json');
+    await lock(async () => {
+      await write(mappingFile, {
+        host, projectKey, workItemType, templateId,
+        mapping: templateMappings,
+        updatedAt: new Date().toISOString(),
+        updatedBy: req.agentIdentity,
+        learnedFrom: 'history'
+      });
+    });
+    res.json({ success: true, message: '已从历史导入学习映射', mapping: templateMappings });
+  }));
   admin.get('/config', route(async (req, res) => {
     const config = await credentials();
     res.json({ enabled: !!passwordEnabled, token: config.digest ? { active: true, createdAt: config.createdAt, suffix: config.suffix } : { active: false } });

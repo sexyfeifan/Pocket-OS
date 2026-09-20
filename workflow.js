@@ -35,9 +35,27 @@
     const all = topic.productionSteps || [], steps=all.filter(s=>!s.skipped);
     const states=steps.map(s=>stepState(topic,s,today)), done=states.filter(s=>s==='done').length, planned=states.filter(s=>s==='elapsed').length;
     const scheduled = steps.filter(s => S.ranges(s).length).length;
+    // 按实际日期计算进度：结束日已过算完成，结束日未过算进行中
+    // 手动模式（mode === 'manual'）使用人工确认进度
+    // 自动模式（mode === 'calendar'）使用日期进度
+    let percent;
+    if (mode(topic) === 'manual') {
+      percent = steps.length ? Math.round(done / steps.length * 100) : 0;
+    } else {
+      const completedByDate = steps.filter(s => {
+        const rs = S.ranges(s);
+        return rs.length && rs.at(-1).end < today;
+      }).length;
+      const activeByDate = steps.filter(s => {
+        const rs = S.ranges(s);
+        return rs.length && rs.at(-1).end >= today && rs[0].start <= today;
+      }).length;
+      percent = steps.length ? 
+        Math.round((completedByDate + activeByDate * 0.5) / steps.length * 100) : 0;
+    }
     return { total: steps.length, done, planned, settled:done+planned, skipped:all.length-steps.length, scheduled,
       unscheduled: steps.filter((s,i) => states[i]!=='done'&&!S.ranges(s).length).length,
-      percent: steps.length ? Math.round((done+planned) / steps.length * 100) : 0 };
+      percent };
   }
   function progressText(topic, today) {
     const s = stats(topic,today);
@@ -142,11 +160,7 @@
       notes: Object.fromEntries(Object.entries(t.notes || {}).filter(([d]) => S.validDate(d)).map(([d,n]) => [d,String(n)])),
       preparationTasks: (t.preparationTasks || []).map(p => ({ text: String(p.text || ''), done: !!p.done })) };
   }
-  const templates = [
-    { id:'talk', name:'口播视频', steps:[['script','脚本'],['shoot','录制'],['acopy','剪辑'],['publish','发布']], tasks:['确认选题与脚本','检查录音与画面'] },
-    { id:'commercial', name:'商业拍摄', steps:[['script','脚本确认'],['shoot','拍摄'],['acopy','粗剪'],['review','客户审片'],['bcopy','精剪'],['publish','发布']], tasks:['确认客户需求','确认场地与人员','检查授权与交付要求'] },
-    { id:'short', name:'轻量短视频', steps:[['script','提纲'],['shoot','拍摄'],['acopy','剪辑'],['publish','发布']], tasks:['确认平台与画幅'] }
-  ];
+  const templates = []; // 移除内置模板，只保留用户自定义模板
   function blueprint(id, defaults, customs = []) {
     const custom = customs.find(t => t.id === id), builtin = templates.find(t => t.id === id);
     const defs = custom?.steps || (builtin ? builtin.steps.map(([key,name]) => ({key,name,color: defaults.find(d=>d.key===key)?.color || '#B8D4E3'})) : defaults);

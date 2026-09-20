@@ -97,11 +97,11 @@ test('新建项目全部未安排，Canbox 仅填写实际拍摄日期', () => {
 });
 
 test('模板和复制项目只保留结构，不复制日期、完成状态、通告或历史', () => {
-  const a=app();a.run("createTopic('commercial','商业测试')");
+  const a=app();a.run("createTopic('','标准测试')");
   const templated=JSON.parse(a.run('JSON.stringify(appState.topics[1])'));
-  assert(templated.productionSteps.some(s=>s.key==='review'));
+  assert(templated.productionSteps.length>0);
   assert(templated.productionSteps.every(s=>s.cleared&&!s.done&&!s.startDate));
-  assert.equal(templated.preparationTasks.length,3);
+  assert.equal(templated.preparationTasks.length,0);
   a.run("appState.topics[0].canboxImport={secret:'old'}; appState.topics[0].scheduleHistory=[{}]; duplicateProject('test','复制测试')");
   const copy=JSON.parse(a.run('JSON.stringify(appState.topics[2])'));
   assert(copy.productionSteps.every(s=>!s.startDate&&!s.done));

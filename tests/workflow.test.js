@@ -2,7 +2,15 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const W=require('../workflow'),S=require('../schedule');
 const topic={id:'sample',title:'样例',productionSteps:[{key:'shoot',name:'拍摄',done:true,startDate:'2026-09-01',endDate:'2026-09-05',segments:[{start:'2026-09-01',end:'2026-09-02'},{start:'2026-09-05',end:'2026-09-05'}]},{key:'custom',name:'客户审片',cleared:true,done:false}]};
 test('工作台和看板统计包含未排期节点，多段拍摄使用同一日期模型',()=>{
-  assert.deepEqual(W.stats(topic),{total:2,done:1,planned:0,settled:1,skipped:0,scheduled:1,unscheduled:1,percent:50});
+  const stats=W.stats(topic);
+  assert.equal(stats.total,2);
+  assert.equal(stats.done,1);
+  assert.equal(stats.planned,0);
+  assert.equal(stats.settled,1);
+  assert.equal(stats.skipped,0);
+  assert.equal(stats.scheduled,1);
+  assert.equal(stats.unscheduled,1);
+  assert.equal(stats.percent,50);
   assert.equal(W.progressText(topic),'已完成 1/2 个节点');
   assert.equal(W.events([topic],'2026-09-03','2026-09-04').length,0);
   assert.equal(W.events([topic],'2026-09-01','2026-09-05').length,2);

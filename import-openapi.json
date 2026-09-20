@@ -387,6 +387,73 @@
         }
       }
     },
+    "/imports/validate": {
+      "post": {
+        "operationId": "validatePocketImport",
+        "summary": "校验导入数据格式（dry-run）",
+        "description": "提交前先校验数据格式，避免试错。不创建草稿，只返回校验结果。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Import"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "校验结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "valid": { "type": "boolean" },
+                    "message": { "type": "string" },
+                    "normalizedPayload": { "type": "object" },
+                    "error": { "type": "string" },
+                    "hint": { "type": "string" }
+                  },
+                  "required": ["valid"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": { "type": "string" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": { "type": "string" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/imports": {
       "post": {
         "operationId": "submitPocketImportDraft",
@@ -784,6 +851,208 @@
                   "required": [
                     "error"
                   ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "saveFeishuMapping",
+        "summary": "保存飞书字段/节点映射",
+        "description": "保存飞书字段 ID 与 Pocket OS 字段的对应关系。映射保存后，后续导入相同模板的项目会自动应用。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string",
+                    "enum": ["project.feishu.cn", "meegle.com"]
+                  },
+                  "projectKey": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,100}$"
+                  },
+                  "workItemType": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,100}$"
+                  },
+                  "templateId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,100}$"
+                  },
+                  "mapping": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,100}$"
+                    }
+                  }
+                },
+                "required": ["host", "projectKey", "workItemType", "templateId", "mapping"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "映射已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": { "type": "string" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": { "type": "string" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": { "type": "string" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/imports/batch-dismiss": {
+      "post": {
+        "operationId": "batchDismissImports",
+        "summary": "批量忽略待确认草稿",
+        "description": "批量忽略选中的待确认草稿。单次最多操作 50 条。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "draftIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^fi_[a-f0-9]{40}$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 50
+                  }
+                },
+                "required": ["draftIds"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "批量操作结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string" },
+                          "success": { "type": "boolean" },
+                          "action": { "type": "string" },
+                          "error": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": { "type": "string" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": { "type": "string" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求被拒绝或暂时失败；不要绕过校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": { "type": "string" }
+                  },
+                  "required": ["error"]
                 }
               }
             }

@@ -83,15 +83,38 @@ var PocketImports = (() => {
     const data = await request('/imports' + query);
     if (current !== generation || !dialog.open) return;
     shell('从飞书选择项目', '<p class="workflow-help">这里只列出 Agent 已提交的候选项目，不是飞书全部项目。点击刷新获取新提交；选择后可绑定已有项目或新建。未确认前不改变任何排期。</p>' +
-      '<div class="import-toolbar">' + button('settings', 'Agent 接入设置') + button('refresh', '刷新列表') + '</div>' +
+      '<div class="import-toolbar">' + button('settings', 'Agent 接入设置') + button('refresh', '刷新列表') + button('mapping', '映射管理') + '</div>' +
+      (state.filter === 'pending' && data.items.length > 0 ? '<div class="import-batch-actions"><label><input type="checkbox" id="select-all" data-import-action="select-all"> 全选</label>' +
+        button('batch-dismiss', '批量忽略选中', '', false) + '<span id="selected-count">已选 0 条</span></div>' : '') +
       '<form class="import-search"><label>记录状态<select id="import-filter">' + Object.entries(statuses).map(([k,v]) => '<option value="' + k + '"' + (state.filter === k ? ' selected' : '') + '>' + v + '</option>').join('') +
       '</select></label><label>搜索项目<input id="import-search" type="search" placeholder="项目名、项目号或飞书 ID" value="' + esc(state.query) + '"></label><button class="editor-button">搜索</button></form>' +
       '<p class="workflow-help">共 ' + data.total + ' 条 · 第 ' + data.page + ' 页</p><div class="import-candidates">' + data.items.map(item =>
-        '<article><strong>' + esc(item.title) + '</strong><p>' + esc(item.projectCode || '项目号未填写') + ' · 飞书 ID ' + esc(item.source.workItemId) +
+        '<article>' + (state.filter === 'pending' ? '<label class="import-select"><input type="checkbox" data-draft-id="' + esc(item.id) + '" data-import-action="select-draft"></label>' : '') +
+        '<div class="import-item-content"><strong>' + esc(item.title) + '</strong><p>' + esc(item.projectCode || '项目号未填写') + ' · 飞书 ID ' + esc(item.source.workItemId) +
         '</p><p class="workflow-help">来源读取：' + esc(new Date(item.source.fetchedAt).toLocaleString('zh-CN')) + ' · ' + statuses[item.status] + '</p>' +
-        button('detail', item.status === 'pending' ? '选择并核对' : '查看记录', item.id) + '</article>').join('') +
+        button('detail', item.status === 'pending' ? '选择并核对' : '查看记录', item.id) + '</div></article>').join('') +
       (!data.items.length ? '<p class="import-empty">暂无候选项目。先在接入设置中生成凭证，让 Agent 提交你指定的项目，再回来刷新。</p>' : '') + '</div>',
     (data.page > 1 ? button('prev', '上一页') : '') + (data.page < data.pages ? button('next', '下一页') : ''));
+    // 绑定全选事件
+    const selectAll = $('select-all');
+    if (selectAll) {
+      selectAll.addEventListener('change', () => {
+        const checked = selectAll.checked;
+        dialog.querySelectorAll('[data-draft-id]').forEach(cb => { cb.checked = checked; });
+        updateSelectedCount();
+      });
+    }
+    // 绑定单选事件
+    dialog.querySelectorAll('[data-draft-id]').forEach(cb => {
+      cb.addEventListener('change', updateSelectedCount);
+    });
+  }
+  function updateSelectedCount() {
+    const selected = dialog.querySelectorAll('[data-draft-id]:checked').length;
+    const countEl = $('selected-count');
+    if (countEl) countEl.textContent = '已选 ' + selected + ' 条';
+    const batchBtn = dialog.querySelector('[data-import-action="batch-dismiss"]');
+    if (batchBtn) batchBtn.disabled = selected === 0;
   }
   async function settings() {
     state.config = await request('/config');
@@ -115,6 +138,110 @@ var PocketImports = (() => {
       'GET /api/agent/v1/mappings 查询已确认模板映射；冲突项请询问。未填日期留空，不倒排、不合并不连续拍摄段。发布时间字段与发布节点都提交，冲突由我选择。\n' +
       'POST /api/agent/v1/imports 提交符合 schemaVersion=1 的候选数据，携带 Idempotency-Key；同一次请求重试必须使用同一个键和完全相同的内容，重新读取或修改内容时使用新键。\n' +
       '仅生成待确认草稿，返回 reviewPath 让我在 Pocket OS 手动绑定或新建、预览并确认。失败不要宣称成功。Token 只从密钥配置读取，不要输出。';
+  }
+  async function mapping() {
+    const current = generation;
+    shell('映射管理', '<p class="workflow-help">配置飞书字段 ID 与 Pocket OS 字段的对应关系。映射保存后，后续导入相同模板的项目会自动应用。</p>' +
+      '<div class="import-mapping-form">' +
+      '<label class="editor-field">飞书站点<select id="mapping-host"><option value="project.feishu.cn">project.feishu.cn</option><option value="meegle.com">meegle.com</option></select></label>' +
+      '<label class="editor-field">空间 ID<input id="mapping-project-key" placeholder="projectKey" maxlength="100"></label>' +
+      '<label class="editor-field">工作项类型<input id="mapping-work-item-type" placeholder="workItemType" maxlength="100"></label>' +
+      '<label class="editor-field">模板 ID<input id="mapping-template-id" placeholder="templateId" maxlength="100"></label>' +
+      '<div class="import-mapping-actions">' +
+      '<button class="editor-button" data-import-action="load-mapping">加载当前映射</button>' +
+      '<button class="editor-button" data-import-action="learn-mapping">从历史导入学习</button>' +
+      '</div>' +
+      '</div>' +
+      '<div id="mapping-fields" class="import-mapping-fields"></div>',
+      button('list', '返回列表') + button('save-mapping', '保存映射', '', true));
+  }
+  async function loadMapping() {
+    const current = generation;
+    const host = $('mapping-host').value;
+    const projectKey = $('mapping-project-key').value.trim();
+    const workItemType = $('mapping-work-item-type').value.trim();
+    const templateId = $('mapping-template-id').value.trim();
+    if (!projectKey || !workItemType || !templateId) {
+      error('请填写空间 ID、工作项类型和模板 ID');
+      return;
+    }
+    try {
+      const data = await request('/mappings?host=' + encodeURIComponent(host) +
+        '&projectKey=' + encodeURIComponent(projectKey) +
+        '&workItemType=' + encodeURIComponent(workItemType) +
+        '&templateId=' + encodeURIComponent(templateId));
+      if (current !== generation || !dialog.open) return;
+      const fields = [
+        { key: 'field:title', label: '项目名称' },
+        { key: 'field:projectCode', label: '项目号' },
+        { key: 'field:formats', label: '横竖屏' },
+        { key: 'field:advertising', label: '广告项目' },
+        { key: 'field:cooperationPlatforms', label: '合作渠道' },
+        { key: 'field:platforms', label: '发布平台' },
+        { key: 'field:outlineDocument', label: '大纲文档' },
+        { key: 'field:scriptDocument', label: '脚本文档' },
+        { key: 'step:outline', label: '大纲节点' },
+        { key: 'step:script', label: '脚本节点' },
+        { key: 'step:shoot', label: '拍摄节点' },
+        { key: 'step:acopy', label: 'ACO 节点' },
+        { key: 'step:bcopy', label: 'BCO 节点' },
+        { key: 'step:publish', label: '发布节点' }
+      ];
+      const html = fields.map(f => '<label class="editor-field">' + f.label + '<input data-mapping-key="' + f.key +
+        '" placeholder="飞书字段/节点 ID" value="' + esc(data.mapping[f.key] || '') + '"></label>').join('');
+      $('mapping-fields').innerHTML = html + (data.conflicts.length ?
+        '<p class="import-warning">冲突字段：' + data.conflicts.join(', ') + '。请手动确认正确映射。</p>' : '');
+      state.mappingData = { host, projectKey, workItemType, templateId };
+    } catch (e) { if (current === generation) error(e.message); }
+  }
+  async function saveMapping() {
+    if (!state.mappingData) { error('请先加载映射'); return; }
+    const mapping = {};
+    dialog.querySelectorAll('[data-mapping-key]').forEach(el => {
+      const value = el.value.trim();
+      if (value) mapping[el.dataset.mappingKey] = value;
+    });
+    try {
+      await request('/mappings', 'POST', { ...state.mappingData, mapping });
+      showToast('映射已保存', 'success');
+      await list();
+    } catch (e) { error(e.message); }
+  }
+  async function learnMapping() {
+    const host = $('mapping-host').value;
+    const projectKey = $('mapping-project-key').value.trim();
+    const workItemType = $('mapping-work-item-type').value.trim();
+    const templateId = $('mapping-template-id').value.trim();
+    if (!projectKey || !workItemType || !templateId) {
+      error('请填写空间 ID、工作项类型和模板 ID');
+      return;
+    }
+    try {
+      const result = await request('/mappings/learn', 'POST', { host, projectKey, workItemType, templateId });
+      if (result.success) {
+        showToast(result.message, 'success');
+        // 重新加载映射
+        await loadMapping();
+      } else {
+        showToast(result.message, 'warn');
+      }
+    } catch (e) { error(e.message); }
+  }
+  async function batchDismiss() {
+    const selected = [...dialog.querySelectorAll('[data-draft-id]:checked')].map(cb => cb.dataset.draftId);
+    if (selected.length === 0) { error('请先选择要忽略的记录'); return; }
+    if (!confirm('确认忽略选中的 ' + selected.length + ' 条记录？')) return;
+    try {
+      const result = await request('/imports/batch-dismiss', 'POST', { draftIds: selected });
+      const successCount = result.results.filter(r => r.success).length;
+      const errorCount = result.results.filter(r => r.error).length;
+      if (errorCount > 0) {
+        showToast('已忽略 ' + successCount + ' 条，' + errorCount + ' 条失败', 'warn');
+      } else {
+        showToast('已忽略 ' + successCount + ' 条记录', 'success');
+      }
+      await list();
+    } catch (e) { error(e.message); }
   }
   async function detail(id) {
     const current = generation, item = await request('/imports/' + id);
@@ -190,6 +317,13 @@ var PocketImports = (() => {
     try {
       if (action === 'list' || action === 'refresh') return await list();
       if (action === 'settings') return await settings();
+      if (action === 'mapping') return await mapping();
+      if (action === 'load-mapping') return await loadMapping();
+      if (action === 'save-mapping') return await saveMapping();
+      if (action === 'learn-mapping') return await learnMapping();
+      if (action === 'batch-dismiss') return await batchDismiss();
+      if (action === 'select-all') return; // 由事件监听器处理
+      if (action === 'select-draft') return; // 由事件监听器处理
       if (action === 'detail') return await detail(id);
       if (action === 'search') { state.filter = $('import-filter').value; state.query = $('import-search').value.trim(); state.page = 1; return await list(); }
       if (action === 'prev' || action === 'next') { state.page += action === 'prev' ? -1 : 1; return await list(); }

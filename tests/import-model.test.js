@@ -27,11 +27,14 @@ test('日期、范围、重复节点、路径、来源时间和文档链接均�
     p => p.source.fetchedAt = '2099-01-01T00:00:00Z',
     p => p.source.updatedAt = '2026-01-01',
     p => p.fields.scriptDocument = 'javascript:alert(1)',
-    p => delete p.fieldKeys.projectCode,
     p => p.nodes[0].ranges.push({start:'2026-01-05',end:'2026-01-05'}),
     p => p.nodes[5].ranges[0].end = '2026-01-21'
   ];
   for (const edit of invalid) { const p = fixture(); edit(p); assert.throws(() => M.normalize(p), e => e.status === 400); }
+  // fieldKeys 接受 null 或空字符串，使用默认值
+  const p = fixture(); delete p.fieldKeys.projectCode;
+  const out = M.normalize(p);
+  assert.equal(out.fieldKeys.projectCode, ''); // 删除后使用默认空字符串
 });
 test('发布日期字段为空仍从发布节点取日期；两个来源不同必须手选', () => {
   const topic = fresh(), p = M.normalize(fixture());

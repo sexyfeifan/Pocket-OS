@@ -30,7 +30,8 @@ function id(value, label) {
 }
 function instant(value, label) {
   if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?(?:Z|[+-]\d\d:\d\d)$/.test(value)
-      || !S.validDate(value.slice(0, 10)) || !Number.isFinite(Date.parse(value))) fail(label + ' 需要带时区的 ISO 时间');
+      || !S.validDate(value.slice(0, 10)) || !Number.isFinite(Date.parse(value)))
+    fail(label + ' 需要带时区的 ISO 时间，格式如：2026-09-20T22:00:00+08:00 或 2026-09-20T22:00:00Z');
   return new Date(value).toISOString();
 }
 function link(value, label) {
@@ -41,20 +42,26 @@ function link(value, label) {
   return url.href;
 }
 function fieldValue(key, value) {
+  // 接受 null 值，转换为空值
+  if (value === null) {
+    if (key === 'title') fail('项目名称不能为 null');
+    if (['formats', 'cooperationPlatforms', 'platforms'].includes(key)) return [];
+    if (key === 'advertising') return '';
+    if (key.endsWith('Document')) return '';
+    return '';
+  }
   if (['formats', 'cooperationPlatforms', 'platforms'].includes(key)) {
-    if (value === null) return [];
-    if (!Array.isArray(value) || value.length > 20) fail(fields[key] + ' 需要数组');
+    if (!Array.isArray(value) || value.length > 20) fail(fields[key] + ' 需要数组或 null');
     const values = [...new Set(value.map(v => string(v, fields[key], 60)))].sort();
     if (key === 'formats' && values.some(v => !['横屏', '竖屏'].includes(v))) fail('横竖屏仅接受横屏、竖屏');
     return values;
   }
   if (key === 'advertising') {
-    if (value === null || value === '') return '';
-    if (!['有广告', '无广告'].includes(value)) fail('广告项目仅接受有广告、无广告或 null');
+    if (value === '') return '';
+    if (!['有广告', '无广告'].includes(value)) fail('广告项目仅接受有广告、无广告、null 或空字符串');
     return value;
   }
   if (key.endsWith('Document')) return link(value, fields[key]);
-  if (value === null && key !== 'title') return '';
   return string(value, fields[key], key === 'projectCode' ? 100 : 200, key !== 'title');
 }
 function sourceKey(source) { return [source.host, source.projectKey, source.workItemType, source.workItemId].join('/'); }
@@ -76,10 +83,16 @@ function normalize(input, now = Date.now()) {
   const values = {}, fieldKeys = {};
   for (const key of Object.keys(input.fields).sort()) {
     if (key === 'publishDate') {
-      if (input.fields[key] !== null && input.fields[key] !== '' && !S.validDate(input.fields[key])) fail('发布时间不是有效日期');
+      if (input.fields[key] !== null && input.fields[key] !== '' && !S.validDate(input.fields[key])) fail('发布时间不是有效日期，格式如：2026-09-20');
       values[key] = input.fields[key] || '';
     } else values[key] = fieldValue(key, input.fields[key]);
-    fieldKeys[key] = id(input.fieldKeys?.[key] || (key === 'title' ? 'name' : ''), key + ' 对应的飞书字段 ID');
+    // fieldKeys 接受 null 或空字符串，使用默认值
+    const fieldKey = input.fieldKeys?.[key];
+    if (fieldKey === null || fieldKey === '' || fieldKey === undefined) {
+      fieldKeys[key] = key === 'title' ? 'name' : '';
+    } else {
+      fieldKeys[key] = id(fieldKey, key + ' 对应的飞书字段 ID');
+    }
   }
   if (!Array.isArray(input.nodes) || input.nodes.length > 6) fail('nodes 需要数组，最多六个映射节点');
   const seen = new Set();

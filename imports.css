@@ -13,6 +13,7 @@
 .import-search { display:grid; grid-template-columns:150px minmax(0,1fr) auto; gap:12px; align-items:end; margin:20px 0; }
 .import-candidates { display:grid; gap:12px; }
 .import-candidates article,.import-difference { padding:16px; border:1px solid #e3d8ca; border-radius:12px; background:#fffcf6; overflow-wrap:anywhere; }
+.import-candidates article { display:flex; gap:12px; align-items:flex-start; }
 .import-candidates strong { display:block; font-size:16px; }
 .import-candidates p { margin:6px 0; }
 .import-candidates button { margin-top:8px; }
@@ -32,10 +33,23 @@
 .import-business fieldset label { display:inline-flex; gap:6px; margin:10px 16px 0 0; align-items:center; }
 .import-source-nodes { font-size:13px; background:#f5eee4; padding:12px; border-radius:8px; line-height:1.8; margin-bottom:12px; }
 .project-business-summary { font-size:12px; color:#7d6a5b; overflow-wrap:anywhere; line-height:1.7; }
+/* 批量操作样式 */
+.import-batch-actions { display:flex; align-items:center; gap:12px; padding:12px; background:#f5eee4; border-radius:8px; margin:12px 0; }
+.import-batch-actions label { display:flex; align-items:center; gap:6px; cursor:pointer; }
+.import-batch-actions .editor-button:disabled { opacity:0.5; cursor:not-allowed; }
+.import-item-content { flex:1; min-width:0; }
+/* 映射管理样式 */
+.import-mapping-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:16px 0; }
+.import-mapping-form .editor-field { margin:0; }
+.import-mapping-form button { align-self:end; }
+.import-mapping-actions { display:flex; gap:8px; grid-column:1/-1; }
+.import-mapping-fields { display:grid; gap:12px; margin:16px 0; }
+.import-mapping-fields .editor-field { margin:0; }
 @media(max-width:640px) {
   .import-dialog { width:calc(100vw - 16px); max-height:94dvh; padding:16px; }
   .import-search { grid-template-columns:minmax(0,1fr); }
   .import-values,.import-business { grid-template-columns:minmax(0,1fr); }
   .import-dialog .review-actions { flex-wrap:wrap; }
   .import-dialog h2 { font-size:20px; }
+  .import-mapping-form { grid-template-columns:minmax(0,1fr); }
 }

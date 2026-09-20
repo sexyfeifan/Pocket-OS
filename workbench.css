@@ -7,3 +7,13 @@
 @media(max-width:640px){.project-editor{padding:15px;gap:18px}.editor-field .project-title{font-size:20px}.node-editor{padding:10px;gap:8px}.node-heading{min-width:110px}.node-actions{gap:2px}.node-actions>.editor-button{font-size:11px;padding:5px 6px}.project-editor .node-dates .date-input{width:130px}.node-more-actions{width:260px}.editor-section-head{gap:5px}.editor-section-head h3{width:100%}.editor-calendar-section .gantt-scroll{max-height:210px}.workflow-review .editor-field input{font-size:16px}}
 .project-editor{min-width:0;grid-template-columns:minmax(0,1fr)}.project-editor>*{min-width:0}.editor-calendar-section .gantt-scroll{width:100%;max-width:100%}.node-editor>*{min-width:0}
 .node-completion{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:15px;height:15px;border:1px solid #ddd5c9;border-radius:4px;font-size:12px}
+/* v1.9.11 新增样式 */
+.project-top-actions{display:flex;gap:8px;flex-wrap:wrap;padding-bottom:16px;border-bottom:1px solid #eee8df}.project-top-actions .primary-action{background:#795a44;color:white;border-color:#795a44}.project-top-actions .primary-action:hover{background:#6a4f3a}
+.primary-action{background:#795a44;color:white;border-color:#795a44}.primary-action:hover{background:#6a4f3a}
+.feishu-import-btn{display:inline-flex;align-items:center;gap:4px}.feishu-import-btn svg{flex-shrink:0}
+.node-editor{align-items:start}.node-heading,.node-date-area,.node-actions{display:flex;align-items:center}
+.project-editor>details{padding-top:16px;margin-top:0}.project-editor>details+details{border-top:1px solid #eee8df;padding-top:16px}
+#prep-section,#project-notes,#workflow-history,.workflow-history{padding-top:16px;border-top:1px solid #eee8df}
+.node-more{position:relative}.node-more-actions{position:absolute;top:100%;right:0;z-index:10;background:white;border:1px solid #e8e4dc;border-radius:8px;padding:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);min-width:200px;display:none}
+.node-more[open] .node-more-actions{display:flex;flex-direction:column;gap:4px}
+.node-more .editor-button{width:100%;text-align:left}

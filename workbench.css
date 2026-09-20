@@ -11,7 +11,7 @@
 .project-top-actions{display:flex;gap:8px;flex-wrap:wrap;padding-bottom:16px;border-bottom:1px solid #eee8df}.project-top-actions .primary-action{background:#795a44;color:white;border-color:#795a44}.project-top-actions .primary-action:hover{background:#6a4f3a}
 .primary-action{background:#795a44;color:white;border-color:#795a44}.primary-action:hover{background:#6a4f3a}
 .feishu-import-btn{display:inline-flex;align-items:center;gap:4px}.feishu-import-btn svg{flex-shrink:0}
-.node-editor{align-items:start}.node-heading,.node-date-area,.node-actions{display:flex;align-items:center}
+.node-editor{align-items:center}.node-heading,.node-date-area,.node-actions{display:flex;align-items:center}
 .project-editor>details{padding-top:16px;margin-top:0}.project-editor>details+details{border-top:1px solid #eee8df;padding-top:16px}
 #prep-section,#project-notes,#workflow-history,.workflow-history{padding-top:16px;border-top:1px solid #eee8df}
 .node-more{position:relative}.node-more-actions{position:absolute;top:100%;right:0;z-index:10;background:white;border:1px solid #e8e4dc;border-radius:8px;padding:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);min-width:200px;display:none}

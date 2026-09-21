@@ -11,6 +11,7 @@ RUN npm ci --omit=dev
 COPY server.js schedule.js workflow.js timeline.js workbench.js workbench.css editor.js view.html viewer.js viewer.css index.html canbox.html manifest.json html2canvas.min.js ./
 COPY import-model.js imports-server.js import-openapi.json imports.js imports.css ./
 COPY icon-192.png icon-512.png apple-touch-icon.png favicon.ico ./
+COPY icons ./icons
 COPY tests ./tests
 RUN npm run check
 RUN mkdir -p /app/data/topics

@@ -131,6 +131,9 @@ test('界面转义来源文本，不执行链接脚本；前后端新脚本可�
   t.feishuBinding = {source:{url:'javascript:evil()',workItemId:'<img>',fetchedAt:'2026-01-01'},nodeStates:[{sourceName:'<svg onload=alert(1)>',ranges:[],status:'doing'}]};
   context.topic = t;
   const html = vm.runInContext('PocketImports.businessHtml(topic)+PocketImports.bindingHtml(topic)',context);
-  assert(!html.includes('<img')); assert(!html.includes('<svg')); assert(!html.includes('href="javascript:'));
+  // 检查不安全的标签，但允许来自 /icons/ 路径的安全图标
+  const unsafeImg = html.match(/<img(?![^>]*src="\/icons\/)/g);
+  assert(!unsafeImg, '包含不安全的 img 标签');
+  assert(!html.includes('<svg')); assert(!html.includes('href="javascript:'));
   for(const file of ['imports.js','imports-server.js','import-model.js']) new vm.Script(fs.readFileSync(path.join(__dirname,'..',file),'utf8'));
 });

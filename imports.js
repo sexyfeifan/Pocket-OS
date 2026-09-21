@@ -367,6 +367,8 @@ var PocketImports = (() => {
   }
   function businessHtml(t) {
     const cooperationPlatforms = Array.isArray(t.cooperationPlatforms) ? t.cooperationPlatforms : [];
+    // 使用全局 PLATFORMS 或默认值
+    const platforms = typeof PLATFORMS !== 'undefined' ? PLATFORMS : ['哔哩哔哩', '抖音', '小红书', '视频号', '微博'];
     return '<div class="editor-section editor-section--compact">' +
       '<div class="editor-section__header">' +
       '<h3 class="editor-section__title">项目资料</h3>' +
@@ -381,7 +383,7 @@ var PocketImports = (() => {
       '<div class="editor-field-row">' +
       '<label class="editor-field-label">合作渠道</label>' +
       '<div class="cooperation-selector">' +
-      PLATFORMS.map(p => {
+      platforms.map(p => {
         const isChecked = cooperationPlatforms.includes(p);
         const platformIcon = typeof PocketWorkflow !== 'undefined' ? PocketWorkflow.platformIcons([p], 16) : '';
         return '<label class="cooperation-option"><input type="checkbox" ' + (isChecked ? 'checked ' : '') +

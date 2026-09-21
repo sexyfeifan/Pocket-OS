@@ -1,5 +1,13 @@
 # 更新日志
 
+## 1.9.15 — 2026-09-22
+
+### 修复
+
+**图标显示问题**
+- 修复编辑页左侧栏目图标不显示问题：改用 `PocketWorkflow.platformIcons` 和 `PocketWorkflow.formatIcons` 函数
+- 修复只读页时间轴图标显示为代码问题：新增 `subtitleHtml` 字段避免 HTML 被转义
+
 ## 1.9.14 — 2026-09-22
 
 ### 新功能

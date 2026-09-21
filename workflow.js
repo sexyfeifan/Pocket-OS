@@ -179,6 +179,7 @@
   const platformIconMap = {
     '微博': 'weibo',
     '抖音': 'douyin',
+    '哔哩哔哩': 'bilibili',
     'B站': 'bilibili',
     'Bilibili': 'bilibili',
     '视频号': 'wechat',

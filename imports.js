@@ -366,15 +366,33 @@ var PocketImports = (() => {
     finally { busy = false; }
   }
   function businessHtml(t) {
-    return '<details id="project-business" data-remember><summary>项目资料' + (t.projectCode ? ' · ' + esc(t.projectCode) : '') + '</summary><div class="import-business">' +
-      '<label>项目号<input id="business-code" data-draft maxlength="100" value="' + esc(t.projectCode || '') + '" onchange="PocketImports.editField(\'' + t.id + '\',\'projectCode\',this.value)"></label>' +
-      '<label>广告项目<select aria-label="广告项目" onchange="PocketImports.editField(\'' + t.id + '\',\'advertising\',this.value)">' +
+    const cooperationPlatforms = Array.isArray(t.cooperationPlatforms) ? t.cooperationPlatforms : [];
+    return '<div class="editor-section editor-section--compact">' +
+      '<div class="editor-section__header">' +
+      '<h3 class="editor-section__title">项目资料</h3>' +
+      (t.projectCode ? '<span class="badge">' + esc(t.projectCode) + '</span>' : '') +
+      '</div>' +
+      '<div class="editor-section__content editor-section__content--small">' +
+      '<div class="editor-field-grid">' +
+      '<label class="editor-field">项目号<input id="business-code" data-draft maxlength="100" value="' + esc(t.projectCode || '') + '" onchange="PocketImports.editField(\'' + t.id + '\',\'projectCode\',this.value)"></label>' +
+      '<label class="editor-field">广告项目<select aria-label="广告项目" onchange="PocketImports.editField(\'' + t.id + '\',\'advertising\',this.value)">' +
       ['', '有广告', '无广告'].map(v => '<option value="' + v + '"' + ((t.advertising || '') === v ? ' selected' : '') + '>' + (v || '未填写') + '</option>').join('') + '</select></label>' +
-      '<fieldset><legend>横竖屏（可多选）</legend>' + ['横屏', '竖屏'].map(v => '<label><input type="checkbox" ' + ((t.formats || []).includes(v) ? 'checked ' : '') +
-        'onchange="PocketImports.editFormat(\'' + t.id + '\',\'' + v + '\',this.checked)">' + v + '</label>').join('') + '</fieldset>' +
-      '<label>合作渠道<input id="business-partners" data-draft placeholder="多个渠道用逗号分隔" value="' + esc((Array.isArray(t.cooperationPlatforms) ? t.cooperationPlatforms : []).join('，')) + '" onchange="PocketImports.editField(\'' + t.id + '\',\'cooperationPlatforms\',this.value)"></label>' +
-      ['outlineDocument', 'scriptDocument'].map((key, i) => '<label>' + (i ? '脚本' : '大纲') + '文档链接<input id="business-' + key + '" data-draft type="url" value="' + esc(t[key] || '') +
-        '" onchange="PocketImports.editField(\'' + t.id + '\',\'' + key + '\',this.value)"></label>').join('') + '</div><p class="workflow-help">广告属性、合作渠道和发布平台分别记录；这些资料不改变排期。</p></details>';
+      '</div>' +
+      '<div class="editor-field-row">' +
+      '<label class="editor-field-label">合作渠道</label>' +
+      '<div class="cooperation-selector">' +
+      PLATFORMS.map(p => {
+        const isChecked = cooperationPlatforms.includes(p);
+        const platformIcon = typeof PocketWorkflow !== 'undefined' ? PocketWorkflow.platformIcons([p], 16) : '';
+        return '<label class="cooperation-option"><input type="checkbox" ' + (isChecked ? 'checked ' : '') +
+          'onchange="PocketImports.toggleCooperationPlatform(\'' + t.id + '\',\'' + p + '\',this.checked)">' + platformIcon + '<span>' + esc(p) + '</span></label>';
+      }).join('') + '</div></div>' +
+      '<div class="editor-field-grid">' +
+      ['outlineDocument', 'scriptDocument'].map((key, i) => '<label class="editor-field">' + (i ? '脚本' : '大纲') + '文档链接<input id="business-' + key + '" data-draft type="url" value="' + esc(t[key] || '') +
+        '" onchange="PocketImports.editField(\'' + t.id + '\',\'' + key + '\',this.value)"></label>').join('') +
+      '</div>' +
+      '<p class="workflow-help">广告属性、合作渠道和发布平台分别记录；这些资料不改变排期。</p>' +
+      '</div></div>';
   }
   function bindingHtml(t) {
     const binding = t.feishuBinding, history = [...(t.integrationHistory || [])].reverse();
@@ -405,6 +423,12 @@ var PocketImports = (() => {
   function editFormat(id, value, checked) {
     const t = appState.topics.find(t => t.id === id); if (!t) return;
     t.formats = checked ? [...new Set([...(t.formats || []), value])] : (t.formats || []).filter(v => v !== value);
+    markUpdated(t); saveData();
+  }
+  function toggleCooperationPlatform(id, platform, checked) {
+    const t = appState.topics.find(t => t.id === id); if (!t) return;
+    const current = Array.isArray(t.cooperationPlatforms) ? t.cooperationPlatforms : [];
+    t.cooperationPlatforms = checked ? [...new Set([...current, platform])] : current.filter(v => v !== platform);
     markUpdated(t); saveData();
   }
   function start() {

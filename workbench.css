@@ -14,6 +14,34 @@
 .format-icon{margin:0 1px;transition:transform 0.2s ease}
 .card-platforms,.editor-platforms{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 
+/* ===== 选择器样式 ===== */
+.format-selector,.cooperation-selector{display:flex;flex-wrap:wrap;gap:8px}
+.format-option,.cooperation-option{display:flex;align-items:center;gap:4px;padding:6px 10px;border:1px solid #e8e4dc;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.2s}
+.format-option:hover,.cooperation-option:hover{background:#f3eee6}
+.format-option:has(input:checked),.cooperation-option:has(input:checked){background:#b37d56;color:white;border-color:#b37d56}
+.format-option input,.cooperation-option input{display:none}
+
+/* ===== 编辑器区域样式 ===== */
+.editor-section{background:white;border:1px solid #e8e4dc;border-radius:12px;overflow:hidden;margin-bottom:12px}
+.editor-section__header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#faf7f2;border-bottom:1px solid #e8e4dc}
+.editor-section__title{font-size:14px;font-weight:600;color:#4a3c31;margin:0}
+.editor-section__icons{display:flex;align-items:center;gap:4px}
+.editor-section__content{padding:16px}
+.editor-section__content--small{padding:12px}
+.editor-section__content--small .editor-field{font-size:11px}
+.editor-section__content--small .editor-field input,.editor-section__content--small .editor-field select{font-size:12px;padding:6px 8px}
+.editor-section__content--small .editor-field-label{font-size:11px}
+.editor-section__help{font-size:12px;color:#81766b;margin:0}
+.editor-field-row{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.editor-field-label{font-size:12px;color:#81766b;min-width:60px;flex-shrink:0}
+.editor-field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px}
+.platform-selector{display:flex;flex-wrap:wrap;gap:8px}
+.platform-btn{padding:6px 12px;border:1px solid #e8e4dc;border-radius:6px;background:white;font-size:12px;cursor:pointer;transition:all 0.2s}
+.platform-btn:hover{background:#f3eee6}
+.platform-btn[aria-pressed="true"]{background:#b37d56;color:white;border-color:#b37d56}
+.action-buttons{display:flex;flex-wrap:wrap;gap:8px}
+.import-business{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+
 /* v1.9.11 新增样式 */
 .project-top-actions{display:flex;gap:8px;flex-wrap:wrap;padding-bottom:16px;border-bottom:1px solid #eee8df;margin-bottom:0}.project-top-actions .primary-action{background:#795a44;color:white;border-color:#795a44}.project-top-actions .primary-action:hover{background:#6a4f3a}
 .primary-action{background:#795a44;color:white;border-color:#795a44}.primary-action:hover{background:#6a4f3a}

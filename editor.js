@@ -55,11 +55,57 @@ function projectEditorHtml(t) {
   ${conflict?`<div class="node-exception"><p>其他设备已修改或删除这个项目，请先解决同步冲突。</p><button onclick="resolveConflictUseServer('${t.id}')">采用服务器版本</button><button onclick="resolveConflictOverwrite('${t.id}')">保留当前版本</button></div>`:''}
   <label class="editor-field">项目名称<input id="topic-title" aria-label="项目名称" value="${escapeHtml(t.title)}" oninput="commitTitle('${t.id}',this.value)" onblur="if(!this.value.trim())this.value='新选题'" class="project-title"></label>
   <div class="editor-outlook" id="editor-outlook">${escapeHtml(W.outlookText(t))}</div>
-  <details id="project-basics" data-remember><summary>分类与平台 · ${escapeHtml(t.category||'内容')}<span class="editor-platforms">${W.platformIcons(t.platforms, 16)}${W.formatIcons(t.formats, 14)}</span></summary><div class="workflow-fields">
-  <label>分类<select aria-label="项目分类" onchange="selectCategory('${t.id}',this.value)">${CATEGORIES.map(c=>`<option ${t.category===c?'selected':''}>${c}</option>`).join('')}</select></label>
-  ${PLATFORMS.map(p=>`<button onclick="togglePlatform('${t.id}','${p}')" aria-pressed="${(t.platforms||[]).includes(p)}" class="editor-button">${p}</button>`).join('')}</div></details>
-  <section class="schedule-entry"><h3>安排已知日期</h3><p class="workflow-help">直接填写下方节点日期，或从已有安排导入。不要求填满，也不按发布日期倒排。</p><div class="workflow-fields"><button class="editor-button" onclick="focusSchedule()">手动安排</button><button class="editor-button" onclick="openCanboxLink('${t.id}')">${cb?'更换 / 同步通告':'绑定拍摄通告'}</button><button class="editor-button" onclick="openTmlModal('${t.id}')">导入 TML</button><button class="editor-button feishu-import-btn" onclick="PocketImports.open('${t.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> 从飞书导入</button></div></section>
+
+  <!-- 区域1: 分类与平台 -->
+  <div class="editor-section">
+    <div class="editor-section__header">
+      <h3 class="editor-section__title">分类与平台 · ${escapeHtml(t.category||'内容')}</h3>
+      <div class="editor-section__icons">
+        ${W.platformIcons(t.platforms, 16)}${W.formatIcons(t.formats, 14)}
+      </div>
+    </div>
+    <div class="editor-section__content">
+      <div class="editor-field-row">
+        <label class="editor-field">分类<select aria-label="项目分类" onchange="selectCategory('${t.id}',this.value)">${CATEGORIES.map(c=>`<option ${t.category===c?'selected':''}>${c}</option>`).join('')}</select></label>
+      </div>
+      <div class="editor-field-row">
+        <label class="editor-field-label">发布平台</label>
+        <div class="platform-selector">
+          ${PLATFORMS.map(p=>`<button onclick="togglePlatform('${t.id}','${p}')" aria-pressed="${(t.platforms||[]).includes(p)}" class="platform-btn">${p}</button>`).join('')}
+        </div>
+      </div>
+      <div class="editor-field-row">
+        <label class="editor-field-label">横竖屏</label>
+        <div class="format-selector">
+          ${['横屏', '竖屏'].map(v => {
+            const isChecked = (t.formats || []).includes(v);
+            const rotation = v === '横屏' ? 'transform:rotate(-90deg)' : '';
+            return `<label class="format-option"><input type="checkbox" ${isChecked ? 'checked ' : ''}onchange="toggleFormat('${t.id}','${v}',this.checked)"><img src="/icons/orientation-64.png" alt="${v}" title="${v}" style="width:18px;height:18px;${rotation}"><span>${v}</span></label>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 区域2: 安排已知日期 -->
+  <div class="editor-section">
+    <div class="editor-section__header">
+      <h3 class="editor-section__title">安排已知日期</h3>
+      <p class="editor-section__help">直接填写下方节点日期，或从已有安排导入。不要求填满，也不按发布日期倒排。</p>
+    </div>
+    <div class="editor-section__content">
+      <div class="action-buttons">
+        <button class="editor-button" onclick="focusSchedule()">手动安排</button>
+        <button class="editor-button" onclick="openCanboxLink('${t.id}')">${cb?'更换 / 同步通告':'绑定拍摄通告'}</button>
+        <button class="editor-button" onclick="openTmlModal('${t.id}')">导入 TML</button>
+        <button class="editor-button feishu-import-btn" onclick="PocketImports.open('${t.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> 从飞书导入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 区域3: 项目资料 -->
   ${typeof PocketImports==='object'?PocketImports.businessHtml(t):''}
+
   <section class="editor-calendar-section"><div class="editor-section-head"><h3>项目日历</h3><button class="editor-button" onclick="scrollEditorCalendar('first')">首个安排</button><button class="editor-button" onclick="scrollEditorCalendar('today')">今天</button><button class="editor-button" onclick="scrollEditorCalendar('last')">最后安排</button></div><p class="workflow-help">横向滚动查看日期；拖动色块只修改该节点，其他节点不会移动。</p><div id="edit-gantt-wrapper" class="gantt-scroll"><div id="edit-gantt-container"></div></div></section>
   <section aria-label="制作流程"><div class="editor-section-head"><h3>制作节点</h3><button id="undo-schedule" onclick="undoSchedule('${t.id}')" ${scheduleHistory.get(t.id)?.length?'':'disabled'} class="editor-button">撤销排期修改</button></div>
   <p id="edit-progress" class="workflow-help">${escapeHtml(W.progressText(t))}</p><p class="workflow-help">${W.mode(t)==='calendar'?'结束日过后自动显示“按计划结束”，不代表人工验收。':'此项目保持手动确认完成。'} · 时区 ${escapeHtml(W.zone(t))}</p>

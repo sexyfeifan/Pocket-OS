@@ -1,5 +1,32 @@
 # 更新日志
 
+## 1.9.18 — 2026-09-22
+
+### 优化
+
+**只读看板时间轴布局**
+- 表头"项目/制作节点"改为"项目"
+- 项目列改为三行布局：项目名称（不换行）、渠道图标、完成度
+- 优化时间轴项目列的显示效果
+
+### 安全改进
+
+**全局错误处理**
+- 添加 unhandledRejection 处理器
+- 添加 uncaughtException 处理器
+
+**安全头部**
+- 添加 Content-Security-Policy (CSP)
+- 添加 X-Content-Type-Options
+- 添加 X-Frame-Options
+- 添加 X-XSS-Protection
+- 添加 Referrer-Policy
+
+**API 速率限制**
+- 添加全局 API 速率限制（每 IP 每分钟 100 次）
+- 返回 X-RateLimit-* 响应头
+- 超限时返回 429 和 Retry-After
+
 ## 1.9.17 — 2026-09-22
 
 ### 优化

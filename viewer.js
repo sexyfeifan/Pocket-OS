@@ -84,12 +84,15 @@
       const st = W.stats(t);
       const platformIconsHtml = W.platformIcons(t.platforms, 14);
       const doneText = `${st.done}/${st.total} 完成`;
-      return {id:t.id,title:t.title,subtitle:'',subtitleHtml:`${platformIconsHtml} ${doneText}`,events:data.events.filter(e=>e.topicId===t.id)};
+      const line1 = `<span class="timeline-title">${esc(t.title)}</span>`;
+      const line2 = platformIconsHtml ? `<span class="timeline-icons">${platformIconsHtml}</span>` : '';
+      const line3 = `<span class="timeline-progress">${doneText}</span>`;
+      return {id:t.id,title:t.title,subtitle:'',subtitleHtml:`${line1}${line2}${line3}`,events:data.events.filter(e=>e.topicId===t.id)};
     });
     if(data.single && data.events.some(e=>e.note))rows.push({title:'日期备注',subtitle:'仅查看',subtitleHtml:'',events:data.events.filter(e=>e.note)});
     if (!rows.length) rows.push({title:'制作节点',subtitle:'暂无日期',subtitleHtml:'',events:[]});
     const viewDay=data.single?W.day(data.items[0]):today(),todayIndex=dates.indexOf(viewDay);
-    root.innerHTML=`<div class="timeline" style="width:${titleW+cell*count}px"><div class="timeline-head"><div class="timeline-name" style="width:${titleW}px">${data.single?'节点 / 日期':'项目 / 制作节点'}</div>${dates.map(d=>`<div class="timeline-date ${d===viewDay?'today':''}" style="width:${cell}px"><small>${d.slice(0,4)}</small>${d.slice(5)}</div>`).join('')}</div>${rows.map(row=>{
+    root.innerHTML=`<div class="timeline" style="width:${titleW+cell*count}px"><div class="timeline-head"><div class="timeline-name" style="width:${titleW}px">${data.single?'节点 / 日期':'项目'}</div>${dates.map(d=>`<div class="timeline-date ${d===viewDay?'today':''}" style="width:${cell}px"><small>${d.slice(0,4)}</small>${d.slice(5)}</div>`).join('')}</div>${rows.map(row=>{
       const layout=T.layout(row.events,start,count,cell,Math.max(80,Math.min(220,root.clientWidth-titleW-14)));
       return `<div class="timeline-row">${row.id?`<button class="timeline-name" style="width:${titleW}px" data-topic="${esc(row.id)}">`:`<div class="timeline-name" style="width:${titleW}px">`}<strong>${esc(row.title)}</strong><small>${row.subtitleHtml || esc(row.subtitle)}</small>${row.id?'</button>':'</div>'}<div class="tracks" style="width:${count*cell}px;background-size:${cell}px 100%">${todayIndex<0?'':`<div class="today-line" style="left:${todayIndex*cell}px"></div>`}${layout.blocks.map(e=>`<button class="time-item" data-lane="${e.lane}" ${data.single?'':`data-topic="${esc(e.topicId)}"`} aria-label="${esc(e.name+' · '+e.start+' ~ '+e.end+' · '+(e.statusLabel||''))}" style="left:${e.left}px;width:${Math.max(e.width,e.labelWidth)}px"><span class="time-label" style="width:${e.labelWidth}px">${e.done?'✓ ':e.status==='elapsed'?'◷ ':''}${esc(e.name)}${e.statusLabel?`<small class="viewer-node-state">${esc(e.statusLabel)}</small>`:''}<time>${esc((e.original?'原计划：':'')+W.rangeText([{start:e.start,end:e.end}]))}</time></span><span class="time-bar ${e.settled?'bar-done':''}" style="width:${e.width}px;background:${e.color||'#F2D98B'}">${e.clippedStart?'←':''}${e.clippedEnd?'→':''}</span></button>`).join('')}${layout.blocks.length?'':'<p class="timeline-empty">此时间段暂无安排</p>'}</div></div>`;
     }).join('')}</div>`;

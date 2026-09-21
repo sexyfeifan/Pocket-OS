@@ -662,6 +662,86 @@ function addDays(dateStr, n) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
+// ── 全局错误处理 ──
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[ERROR] Unhandled Rejection at:', promise, 'reason:', reason);
+  // 不退出进程，继续运行
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('[ERROR] Uncaught Exception:', error);
+  // 不退出进程，继续运行
+});
+
+// ── 安全头部 ──
+app.use((req, res, next) => {
+  // CSP 头部 - 允许 CDN 和内联脚本
+  res.setHeader('Content-Security-Policy', 
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com; " +
+    "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; " +
+    "font-src 'self' https://fonts.gstatic.com; " +
+    "img-src 'self' data: blob:; " +
+    "connect-src 'self'"
+  );
+  // 其他安全头部
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
+// ── 全局 API 速率限制 ──
+const apiRateLimit = new Map();
+const API_RATE_WINDOW = 60000; // 1 分钟
+const API_RATE_MAX = 100; // 每分钟最大请求数
+
+function checkApiRateLimit(ip) {
+  const now = Date.now();
+  const entry = apiRateLimit.get(ip);
+  
+  if (!entry || now > entry.resetAt) {
+    apiRateLimit.set(ip, { count: 1, resetAt: now + API_RATE_WINDOW });
+    return { remaining: API_RATE_MAX - 1, resetAt: now + API_RATE_WINDOW };
+  }
+  
+  if (entry.count >= API_RATE_MAX) {
+    const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+    return { error: true, retryAfter };
+  }
+  
+  entry.count++;
+  return { remaining: API_RATE_MAX - entry.count, resetAt: entry.resetAt };
+}
+
+// 应用速率限制到 API 路由
+app.use('/api/', (req, res, next) => {
+  const ip = req.ip || req.socket.remoteAddress;
+  const rateResult = checkApiRateLimit(ip);
+  
+  if (rateResult.error) {
+    res.setHeader('Retry-After', rateResult.retryAfter);
+    return res.status(429).json({ 
+      error: '请求过于频繁，请稍后重试',
+      retryAfter: rateResult.retryAfter 
+    });
+  }
+  
+  res.setHeader('X-RateLimit-Limit', API_RATE_MAX);
+  res.setHeader('X-RateLimit-Remaining', rateResult.remaining);
+  res.setHeader('X-RateLimit-Reset', Math.ceil(rateResult.resetAt / 1000));
+  next();
+});
+
+// ── 定期清理速率限制缓存 ──
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of apiRateLimit) {
+    if (now > entry.resetAt) apiRateLimit.delete(ip);
+  }
+}, 60000); // 每分钟清理一次
+
 // ── 启动 ──
 migrateFromLegacy().then(() => {
   app.listen(PORT, () => {

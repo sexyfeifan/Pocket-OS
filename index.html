@@ -182,6 +182,10 @@
       </button>
       <input type="file" id="import-file" accept=".json" class="file-input-hidden" onchange="importData(event)">
     </div>
+    <button onclick="openSyncCalendar()" class="w-full py-1.5 text-xs text-coffee-light hover:text-coffee border border-beige-300 rounded-lg hover:bg-beige-200 transition-colors flex items-center justify-center gap-1">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+      同步到日历
+    </button>
     <button data-save-status onclick="flushSave()" class="px-3 py-2 text-xs text-sage-text" aria-live="polite">已保存</button>
     <a href="/view" target="_blank" rel="noopener" class="block px-3 py-2 text-sm text-brand">打开只读看板 ↗</a>
     <p id="viewer-access-note" class="px-3 pb-2 text-xs text-coffee-light"></p>
@@ -2964,9 +2968,156 @@
     const isTyping = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName) || document.activeElement.isContentEditable;
     if ((e.metaKey||e.ctrlKey) && e.key==='z' && !isTyping && currentView === 'edit') { e.preventDefault(); undoSchedule(selectedTopicId); }
     if (e.key==='n' && !e.metaKey && !e.ctrlKey && !e.altKey && !isTyping) { e.preventDefault(); createTopic(); }
-    if (e.key==='Escape') { closeSettings(); closeCategory(); closeStepPopup(); closeTmlModal(); closeCanboxImport(); closeNoteModal(); }
+    if (e.key==='Escape') { closeSettings(); closeCategory(); closeStepPopup(); closeTmlModal(); closeCanboxImport(); closeNoteModal(); closeSyncCalendar(); }
   });
+
+  // 同步到日历功能
+  function openSyncCalendar() {
+    const dialog = document.getElementById('sync-dialog');
+    if (!dialog) return;
+
+    const baseUrl = window.location.origin;
+    const fromDate = new Date().toISOString().slice(0, 10);
+    const toDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const prompt = `请帮我将 Pocket OS 的排期日程同步到 Apple 日历。
+
+Pocket OS 地址：${baseUrl}
+日程数据接口：GET /api/calendar/events
+
+请执行以下步骤：
+1. 调用 Pocket OS API 获取日程数据：
+   curl -s "${baseUrl}/api/calendar/events?from=${fromDate}&to=${toDate}"
+
+2. 将返回的 JSON 数据转换为标准 .ics 文件格式
+
+3. 生成 .ics 文件并提供下载
+
+4. 告诉我如何导入到 Apple 日历：
+   - iPhone/iPad：用 Safari 打开 .ics 文件，点击"添加到日历"
+   - Mac：双击 .ics 文件，选择日历
+
+要求：
+- 使用 Asia/Shanghai 时区
+- 包含所有未完成项目的排期节点
+- 包含日期备注
+- 多段拍摄生成独立事件
+- 事件标题格式："项目名称 - 节点名称"`;
+
+    document.getElementById('sync-prompt-edit').value = prompt;
+    dialog.showModal();
+  }
+
+  function closeSyncCalendar() {
+    const dialog = document.getElementById('sync-dialog');
+    if (dialog) dialog.close();
+  }
+
+  async function copySyncPrompt() {
+    const textarea = document.getElementById('sync-prompt-edit');
+    try {
+      await navigator.clipboard.writeText(textarea.value);
+      const btn = document.getElementById('copy-sync-prompt-edit');
+      btn.textContent = '✅ 已复制';
+      setTimeout(() => { btn.textContent = '📋 复制语句'; }, 2000);
+    } catch {
+      textarea.select();
+      document.execCommand('copy');
+    }
+  }
+
+  async function downloadICS() {
+    try {
+      const btn = document.getElementById('download-ics-edit');
+      btn.textContent = '⏳ 生成中...';
+
+      const baseUrl = window.location.origin;
+      const fromDate = new Date().toISOString().slice(0, 10);
+      const toDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      const response = await fetch(`${baseUrl}/api/calendar/events?from=${fromDate}&to=${toDate}`);
+      const data = await response.json();
+
+      if (data.total === 0) {
+        alert('没有日程需要同步');
+        btn.textContent = '⬇️ 直接下载 .ics 文件';
+        return;
+      }
+
+      let ics = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Pocket OS//Calendar Export//CN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:Pocket OS 排期
+X-WR-TIMEZONE:Asia/Shanghai
+
+`;
+
+      for (const event of data.events) {
+        const startDate = event.startDate.replace(/-/g, '');
+        const endDateObj = new Date(event.endDate + 'T00:00:00');
+        endDateObj.setDate(endDateObj.getDate() + 1);
+        const endDateExclusive = endDateObj.toISOString().slice(0, 10).replace(/-/g, '');
+        const escapeICS = (str) => str.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+
+        ics += `BEGIN:VEVENT
+UID:${event.uid}
+DTSTART;VALUE=DATE:${startDate}
+DTEND;VALUE=DATE:${endDateExclusive}
+SUMMARY:${escapeICS(event.title)}
+DESCRIPTION:${escapeICS(event.description)}
+CATEGORIES:${event.categories.map(c => escapeICS(c)).join(',')}
+STATUS:${event.status}
+END:VEVENT
+
+`;
+      }
+
+      ics += 'END:VCALENDAR';
+
+      const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pocket-os-calendar-${fromDate}.ics`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      btn.textContent = '✅ 已下载';
+      setTimeout(() => { btn.textContent = '⬇️ 直接下载 .ics 文件'; }, 2000);
+    } catch (err) {
+      alert('生成失败: ' + err.message);
+      document.getElementById('download-ics-edit').textContent = '⬇️ 直接下载 .ics 文件';
+    }
+  }
   </script>
   <script src="/html2canvas.min.js"></script>
+
+  <!-- 同步到日历对话框 -->
+  <dialog id="sync-dialog" style="width:min(600px,94vw);max-height:85vh;overflow:auto;border:1px solid #e8e4dc;border-radius:16px;background:#faf7f2;padding:0">
+    <div style="position:sticky;top:0;background:#faf7f2;padding:16px 24px;border-bottom:1px solid #e8e4dc;display:flex;justify-content:space-between;align-items:center;z-index:10">
+      <strong style="font-size:16px">同步到 Apple 日历</strong>
+      <button onclick="closeSyncCalendar()" style="padding:8px;border:1px solid #e8e4dc;border-radius:8px;background:white;cursor:pointer">关闭 ✕</button>
+    </div>
+    <div style="padding:24px">
+      <p style="font-size:13px;color:#81766b;margin:0 0 16px">将 Pocket OS 排期同步到你的 Apple 日历（iPhone/iPad/Mac）。</p>
+      <p style="font-size:13px;font-weight:600;margin:0 0 12px">使用方法：</p>
+      <ol style="font-size:13px;line-height:1.8;margin:0 0 16px;padding-left:24px">
+        <li>复制下方的标准语句</li>
+        <li>发送给支持的 AI Agent（如 Claude、飞书 Agent 等）</li>
+        <li>Agent 会自动执行同步操作</li>
+        <li>按照 Agent 返回的指引完成日历导入</li>
+      </ol>
+      <p style="font-size:13px;font-weight:600;margin:0 0 12px">标准语句：</p>
+      <textarea id="sync-prompt-edit" readonly style="width:100%;padding:12px;border:1px solid #e8e4dc;border-radius:8px;font-size:12px;font-family:monospace;background:white;resize:vertical;margin:0 0 16px;height:200px"></textarea>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button id="copy-sync-prompt-edit" onclick="copySyncPrompt()" style="padding:10px 18px;border:1px solid #e8e4dc;border-radius:8px;background:white;cursor:pointer;font-size:13px">📋 复制语句</button>
+        <button id="download-ics-edit" onclick="downloadICS()" style="padding:10px 18px;border:1px solid #e8e4dc;border-radius:8px;background:white;cursor:pointer;font-size:13px">⬇️ 直接下载 .ics 文件</button>
+      </div>
+    </div>
+  </dialog>
 </body>
 </html>

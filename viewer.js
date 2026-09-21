@@ -31,7 +31,9 @@
   function cards(items) {
     return `<div class="cards">${items.map(t => {
       const st = W.stats(t);
-      return `<article class="card"><div class="card-top"><span class="badge">${esc(t.category)}</span><small>${esc(t.platforms.join(' · '))}</small></div>
+      const platformIconsHtml = W.platformIcons(t.platforms, 20);
+      const formatIconsHtml = W.formatIcons(t.formats, 18);
+      return `<article class="card"><div class="card-top"><span class="badge">${esc(t.category)}</span><div class="card-platforms">${platformIconsHtml || '<small class="muted">未设置平台</small>'}${formatIconsHtml}</div></div>
       <h2>${esc(t.title)}</h2><p class="help">${esc(W.businessText(t))}</p><div class="badges">${badges(t)}</div><p class="date">${t.publishDate ? `发布 ${esc(t.publishDate)}` : '发布日期未定'}</p>
       <div class="progress"><span style="width:${st.percent}%"></span></div><small>${esc(W.progressText(t))}</small>
       <div>${nodes(t,6)}</div>${t.productionSteps.length > 6 ? `<span class="extra">另有 ${t.productionSteps.length-6} 个节点</span>` : ''}
@@ -78,7 +80,12 @@
     const count=180, titleW=innerWidth<=640?120:180, cell=T.cellWidth(root.clientWidth,titleW,data.single?14:Number($('zoom').value)||14);
     const start=T.windowStart(state.date,count), dates=Array.from({length:count},(_,i)=>T.add(start,i));
     Object.assign(state,{start,cell,titleW});
-    const rows=data.single ? data.items[0].productionSteps.filter(s=>S.ranges(s).length).map(s=>({title:s.name,subtitle:W.stateLabels[W.stepState(data.items[0],s)],events:data.events.filter(e=>!e.note&&e.key===s.key)})) : data.items.map(t=>({id:t.id,title:t.title,subtitle:W.scheduleStatus(t)+' · '+W.progressText(t),events:data.events.filter(e=>e.topicId===t.id)}));
+    const rows=data.single ? data.items[0].productionSteps.filter(s=>S.ranges(s).length).map(s=>({title:s.name,subtitle:W.stateLabels[W.stepState(data.items[0],s)],events:data.events.filter(e=>!e.note&&e.key===s.key)})) : data.items.map(t=>{
+      const st = W.stats(t);
+      const platformIconsHtml = W.platformIcons(t.platforms, 14);
+      const doneText = `${st.done}/${st.total} 完成`;
+      return {id:t.id,title:t.title,subtitle:`${platformIconsHtml} ${doneText}`,events:data.events.filter(e=>e.topicId===t.id)};
+    });
     if(data.single && data.events.some(e=>e.note))rows.push({title:'日期备注',subtitle:'仅查看',events:data.events.filter(e=>e.note)});
     if (!rows.length) rows.push({title:'制作节点',subtitle:'暂无日期',events:[]});
     const viewDay=data.single?W.day(data.items[0]):today(),todayIndex=dates.indexOf(viewDay);
@@ -87,12 +94,24 @@
       return `<div class="timeline-row">${row.id?`<button class="timeline-name" style="width:${titleW}px" data-topic="${esc(row.id)}">`:`<div class="timeline-name" style="width:${titleW}px">`}<strong>${esc(row.title)}</strong><small>${esc(row.subtitle)}</small>${row.id?'</button>':'</div>'}<div class="tracks" style="width:${count*cell}px;background-size:${cell}px 100%">${todayIndex<0?'':`<div class="today-line" style="left:${todayIndex*cell}px"></div>`}${layout.blocks.map(e=>`<button class="time-item" data-lane="${e.lane}" ${data.single?'':`data-topic="${esc(e.topicId)}"`} aria-label="${esc(e.name+' · '+e.start+' ~ '+e.end+' · '+(e.statusLabel||''))}" style="left:${e.left}px;width:${Math.max(e.width,e.labelWidth)}px"><span class="time-label" style="width:${e.labelWidth}px">${e.done?'✓ ':e.status==='elapsed'?'◷ ':''}${esc(e.name)}${e.statusLabel?`<small class="viewer-node-state">${esc(e.statusLabel)}</small>`:''}<time>${esc((e.original?'原计划：':'')+W.rangeText([{start:e.start,end:e.end}]))}</time></span><span class="time-bar ${e.settled?'bar-done':''}" style="width:${e.width}px;background:${e.color||'#F2D98B'}">${e.clippedStart?'←':''}${e.clippedEnd?'→':''}</span></button>`).join('')}${layout.blocks.length?'':'<p class="timeline-empty">此时间段暂无安排</p>'}</div></div>`;
     }).join('')}</div>`;
     // Measure wrapped labels so even long custom names never overlap the next lane.
+    // Calculate max height across all rows to ensure uniform row height
+    let maxHeight = 80;
+    root.querySelectorAll('.tracks').forEach(track=>{
+      const blocks=[...track.querySelectorAll('.time-item')], heights=[];
+      blocks.forEach(b=>{const i=Number(b.dataset.lane);heights[i]=Math.max(heights[i]||0,b.offsetHeight+14);});
+      const rowHeight = heights.reduce((sum, h) => sum + h, 12) || 80;
+      maxHeight = Math.max(maxHeight, rowHeight);
+    });
+    // Apply uniform height to all rows
+    root.querySelectorAll('.timeline-row').forEach(row=>{
+      row.style.minHeight = maxHeight + 'px';
+    });
     root.querySelectorAll('.tracks').forEach(track=>{
       const blocks=[...track.querySelectorAll('.time-item')], heights=[];
       blocks.forEach(b=>{const i=Number(b.dataset.lane);heights[i]=Math.max(heights[i]||0,b.offsetHeight+14);});
       const offsets=[];let height=12;heights.forEach((h,i)=>{offsets[i]=height;height+=h;});
       blocks.forEach(b=>b.style.top=offsets[Number(b.dataset.lane)]+'px');
-      track.style.height=Math.max(80,height)+'px';
+      track.style.height=maxHeight+'px';
     });
     root.scrollLeft=(T.number(state.date)-T.number(start)+state.fraction)*cell;root.scrollTop=state.top;
     rememberTimeline(root);
@@ -215,5 +234,149 @@
   window.addEventListener('pagehide',()=>{clearInterval(timer);source?.close();});
   window.addEventListener('pageshow',e=>{if(e.persisted){timer=setInterval(()=>{if(!document.hidden)load();},7200000);load();connect();}});
   let resizeFrame;window.addEventListener('resize',()=>{cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>{document.querySelectorAll('[data-timeline-key]').forEach(root=>{if(root.clientWidth)drawTimeline(root);});});});
+
+  // 同步到日历功能
+  function initSyncCalendar() {
+    const syncBtn = $('sync-calendar');
+    const syncDialog = $('sync-dialog');
+    const closeSyncBtn = $('close-sync');
+    const copyBtn = $('copy-sync-prompt');
+    const downloadBtn = $('download-ics');
+    const promptTextarea = $('sync-prompt');
+
+    if (!syncBtn || !syncDialog) return;
+
+    // 标准语句模板
+    const syncPromptTemplate = `请帮我将 Pocket OS 的排期日程同步到 Apple 日历。
+
+Pocket OS 地址：{{POCKET_URL}}
+日程数据接口：GET /api/calendar/events
+
+请执行以下步骤：
+1. 调用 Pocket OS API 获取日程数据：
+   curl -s "{{POCKET_URL}}/api/calendar/events?from={{FROM_DATE}}&to={{TO_DATE}}"
+
+2. 将返回的 JSON 数据转换为标准 .ics 文件格式
+
+3. 生成 .ics 文件并提供下载
+
+4. 告诉我如何导入到 Apple 日历：
+   - iPhone/iPad：用 Safari 打开 .ics 文件，点击"添加到日历"
+   - Mac：双击 .ics 文件，选择日历
+
+要求：
+- 使用 Asia/Shanghai 时区
+- 包含所有未完成项目的排期节点
+- 包含日期备注
+- 多段拍摄生成独立事件
+- 事件标题格式："项目名称 - 节点名称"`;
+
+    // 打开对话框
+    syncBtn.onclick = () => {
+      const baseUrl = window.location.origin;
+      const fromDate = new Date().toISOString().slice(0, 10);
+      const toDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      const prompt = syncPromptTemplate
+        .replace('{{POCKET_URL}}', baseUrl)
+        .replace('{{POCKET_URL}}', baseUrl)
+        .replace('{{FROM_DATE}}', fromDate)
+        .replace('{{TO_DATE}}', toDate);
+
+      promptTextarea.value = prompt;
+      syncDialog.showModal();
+    };
+
+    // 关闭对话框
+    closeSyncBtn.onclick = () => syncDialog.close();
+    syncDialog.addEventListener('click', (e) => {
+      if (e.target === syncDialog) syncDialog.close();
+    });
+
+    // 复制语句
+    copyBtn.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(promptTextarea.value);
+        copyBtn.textContent = '✅ 已复制';
+        setTimeout(() => { copyBtn.textContent = '📋 复制语句'; }, 2000);
+      } catch {
+        promptTextarea.select();
+        document.execCommand('copy');
+        copyBtn.textContent = '✅ 已复制';
+        setTimeout(() => { copyBtn.textContent = '📋 复制语句'; }, 2000);
+      }
+    };
+
+    // 直接下载 .ics 文件
+    downloadBtn.onclick = async () => {
+      try {
+        downloadBtn.textContent = '⏳ 生成中...';
+        const baseUrl = window.location.origin;
+        const fromDate = new Date().toISOString().slice(0, 10);
+        const toDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+        const response = await fetch(`${baseUrl}/api/calendar/events?from=${fromDate}&to=${toDate}`);
+        const data = await response.json();
+
+        if (data.total === 0) {
+          alert('没有日程需要同步');
+          downloadBtn.textContent = '⬇️ 直接下载 .ics 文件';
+          return;
+        }
+
+        // 生成 .ics 文件
+        let ics = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Pocket OS//Calendar Export//CN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:Pocket OS 排期
+X-WR-TIMEZONE:Asia/Shanghai
+
+`;
+
+        for (const event of data.events) {
+          const startDate = event.startDate.replace(/-/g, '');
+          const endDateObj = new Date(event.endDate + 'T00:00:00');
+          endDateObj.setDate(endDateObj.getDate() + 1);
+          const endDateExclusive = endDateObj.toISOString().slice(0, 10).replace(/-/g, '');
+          const escapeICS = (str) => str.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+
+          ics += `BEGIN:VEVENT
+UID:${event.uid}
+DTSTART;VALUE=DATE:${startDate}
+DTEND;VALUE=DATE:${endDateExclusive}
+SUMMARY:${escapeICS(event.title)}
+DESCRIPTION:${escapeICS(event.description)}
+CATEGORIES:${event.categories.map(c => escapeICS(c)).join(',')}
+STATUS:${event.status}
+END:VEVENT
+
+`;
+        }
+
+        ics += 'END:VCALENDAR';
+
+        // 下载文件
+        const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `pocket-os-calendar-${fromDate}.ics`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        downloadBtn.textContent = '✅ 已下载';
+        setTimeout(() => { downloadBtn.textContent = '⬇️ 直接下载 .ics 文件'; }, 2000);
+      } catch (err) {
+        alert('生成失败: ' + err.message);
+        downloadBtn.textContent = '⬇️ 直接下载 .ics 文件';
+      }
+    };
+  }
+
+  initSyncCalendar();
   load();connect();
 })();

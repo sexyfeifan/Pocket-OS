@@ -174,5 +174,37 @@
     const formats = Array.isArray(t.formats) ? t.formats : [], partners = Array.isArray(t.cooperationPlatforms) ? t.cooperationPlatforms : [];
     return [t.projectCode,formats.join(' / '),t.advertising,partners.length?'合作：'+partners.join(' / '):''].filter(Boolean).join(' · ');
   }
-  return { DEFAULT_ZONE, setClock, validZone, zone, day, mode, stateLabels, exceptionKinds, stepState, settled, dateText, stats, progressText, lifecycle, lifecycleLabels, scheduleStatus, events, outlook, outlookText, attention, overviewPanels, snapshot, diff, rangeText, publicTopic, templates, blueprint, copyStructure, businessText };
+
+  // 平台图标映射
+  const platformIconMap = {
+    '微博': 'weibo',
+    '抖音': 'douyin',
+    'B站': 'bilibili',
+    'Bilibili': 'bilibili',
+    '视频号': 'wechat',
+    '微信视频号': 'wechat',
+    '小红书': 'xiaohongshu',
+    'RedNote': 'xiaohongshu'
+  };
+
+  // 获取平台图标 HTML
+  function platformIcons(platforms, size = 16) {
+    if (!Array.isArray(platforms) || !platforms.length) return '';
+    return platforms.map(p => {
+      const iconKey = platformIconMap[p] || platformIconMap[p.replace(/\s/g, '')];
+      if (!iconKey) return '';
+      return `<img src="/icons/${iconKey}-64.png" alt="${p}" title="${p}" class="platform-icon" style="width:${size}px;height:${size}px;">`;
+    }).filter(Boolean).join('');
+  }
+
+  // 获取横竖屏图标 HTML
+  function formatIcons(formats, size = 16) {
+    if (!Array.isArray(formats) || !formats.length) return '';
+    return formats.map(f => {
+      const rotation = f === '横屏' ? 'transform:rotate(-90deg)' : '';
+      return `<img src="/icons/orientation-64.png" alt="${f}" title="${f}" class="format-icon" style="width:${size}px;height:${size}px;${rotation}">`;
+    }).join('');
+  }
+
+  return { DEFAULT_ZONE, setClock, validZone, zone, day, mode, stateLabels, exceptionKinds, stepState, settled, dateText, stats, progressText, lifecycle, lifecycleLabels, scheduleStatus, events, outlook, outlookText, attention, overviewPanels, snapshot, diff, rangeText, publicTopic, templates, blueprint, copyStructure, businessText, platformIcons, formatIcons };
 });

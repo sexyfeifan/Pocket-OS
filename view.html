@@ -5,7 +5,8 @@
 <script defer src="/schedule.js"></script><script defer src="/workflow.js"></script><script defer src="/timeline.js"></script><script defer src="/viewer.js"></script></head>
 <body>
 <header><div class="brand"><span class="brand-icon">P</span><div><strong>Pocket OS</strong><small>内容制作 · 全局看板</small></div><span class="badge">只读</span></div>
-<div class="header-actions"><span id="connection" role="status">正在读取…</span><button id="refresh">刷新</button><button id="fullscreen">全屏</button></div></header>
+<div class="header-actions"><span id="connection" role="status">正在读取…</span><button id="refresh">刷新</button><button id="fullscreen">全屏</button><button id="sync-calendar" class="sync-btn">📅 同步到日历</button></div></header>
+<dialog id="sync-dialog" class="sync-dialog"><div class="dialog-top"><strong>同步到 Apple 日历</strong><button id="close-sync" aria-label="关闭">关闭 ✕</button></div><div class="sync-content"><p class="help">将 Pocket OS 排期同步到你的 Apple 日历（iPhone/iPad/Mac）。</p><p class="help"><strong>使用方法：</strong></p><ol><li>复制下方的标准语句</li><li>发送给支持的 AI Agent（如 Claude、飞书 Agent 等）</li><li>Agent 会自动执行同步操作</li><li>按照 Agent 返回的指引完成日历导入</li></ol><p class="help"><strong>标准语句：</strong></p><textarea id="sync-prompt" readonly rows="12" class="sync-textarea"></textarea><div class="sync-actions"><button id="copy-sync-prompt" class="sync-copy-btn">📋 复制语句</button><button id="download-ics" class="sync-download-btn">⬇️ 直接下载 .ics 文件</button></div></div></dialog>
 <main>
 <div class="heading"><div><p class="eyebrow">YOUR PRODUCTION, AT A GLANCE</p><h1>把进展看清楚。</h1><p class="muted">浏览项目与排期。这里的所有操作都不会修改项目。</p></div><span id="version" class="muted"></span></div>
 <nav aria-label="看板视图"><button data-view="overview" aria-pressed="true">工作概览</button><button data-view="cards">项目卡片</button><button data-view="calendar">周 / 月日历</button><button data-view="panorama">全景时间轴</button></nav>

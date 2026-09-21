@@ -83,6 +83,12 @@ for (const file of ['workflow.js','timeline.js','viewer.js','viewer.css','workbe
 app.get('/manifest.json', (req, res) => res.sendFile(path.join(__dirname, 'manifest.json')));
 app.get('/icon-192.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-192.png')));
 app.get('/icon-512.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-512.png')));
+
+// 平台图标和横竖屏图标
+const platformIcons = ['weibo', 'douyin', 'bilibili', 'wechat', 'xiaohongshu', 'orientation'];
+platformIcons.forEach(icon => {
+  app.get(`/icons/${icon}-64.png`, (req, res) => res.sendFile(path.join(__dirname, 'icons', `${icon}-64.png`)));
+});
 app.get('/apple-touch-icon.png', (req, res) => res.sendFile(path.join(__dirname, 'apple-touch-icon.png')));
 app.get('/favicon.ico', (req, res) => res.sendFile(path.join(__dirname, 'favicon.ico')));
 app.get('/html2canvas.min.js', (req, res) => res.sendFile(path.join(__dirname, 'html2canvas.min.js')));
@@ -142,6 +148,80 @@ app.get('/api/view/events', (req, res) => {
   req.on('close', () => { clearInterval(timer); viewClients.delete(res); });
 });
 app.get('/api/access', (req, res) => res.json({ protected: !!ACCESS_PASSWORD, viewerEnabled: !!VIEW_PASSWORD }));
+
+// ── 日程导出 API（用于 Apple 日历等） ──
+app.get('/api/calendar/events', async (req, res) => {
+  try {
+    const topics = await withMutationLock(readAllTopics);
+    const from = req.query.from || new Date().toISOString().slice(0, 10);
+    const to = req.query.to || addDays(from, 90); // 默认导出90天
+    const events = [];
+
+    for (const topic of topics) {
+      if (topic.completed) continue;
+
+      for (const step of (topic.productionSteps || [])) {
+        if (step.skipped || step.cleared) continue;
+
+        // 处理多段拍摄
+        const ranges = step.key === 'shoot' && step.segments?.length
+          ? step.segments
+          : step.startDate ? [{ start: step.startDate, end: step.endDate || step.startDate }] : [];
+
+        for (const range of ranges) {
+          if (!range.start || range.start > to || range.end < from) continue;
+
+          events.push({
+            uid: `${topic.id}-${step.key}-${range.start}@pocket-os`,
+            title: `${topic.title} - ${step.name}`,
+            description: `项目：${topic.title}\n节点：${step.name}\n状态：${step.done ? '已完成' : '进行中'}`,
+            startDate: range.start,
+            endDate: range.end,
+            location: '',
+            categories: [step.name, topic.category || '内容'],
+            status: step.done ? 'COMPLETED' : 'CONFIRMED',
+            projectName: topic.title,
+            stepName: step.name,
+            stepKey: step.key,
+            color: step.color || '#B37D56'
+          });
+        }
+      }
+
+      // 处理日期备注
+      for (const [date, note] of Object.entries(topic.notes || {})) {
+        if (date >= from && date <= to) {
+          events.push({
+            uid: `${topic.id}-note-${date}@pocket-os`,
+            title: `${topic.title} - 备注`,
+            description: note,
+            startDate: date,
+            endDate: date,
+            location: '',
+            categories: ['备注'],
+            status: 'CONFIRMED',
+            projectName: topic.title,
+            stepName: '备注',
+            stepKey: 'note'
+          });
+        }
+      }
+    }
+
+    events.sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+    res.json({
+      version: BUILD_VERSION,
+      exportedAt: new Date().toISOString(),
+      from,
+      to,
+      total: events.length,
+      events
+    });
+  } catch (err) {
+    res.status(500).json({ error: '日程导出失败: ' + err.message });
+  }
+});
 
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');

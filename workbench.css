@@ -7,6 +7,13 @@
 @media(max-width:640px){.project-editor{padding:15px;gap:18px}.editor-field .project-title{font-size:20px}.node-editor{padding:10px;gap:8px}.node-heading{min-width:110px}.node-actions{gap:2px}.node-actions>.editor-button{font-size:11px;padding:5px 6px}.project-editor .node-dates .date-input{width:130px}.node-more-actions{width:260px}.editor-section-head{gap:5px}.editor-section-head h3{width:100%}.editor-calendar-section .gantt-scroll{max-height:210px}.workflow-review .editor-field input{font-size:16px}}
 .project-editor{min-width:0;grid-template-columns:minmax(0,1fr)}.project-editor>*{min-width:0}.editor-calendar-section .gantt-scroll{width:100%;max-width:100%}.node-editor>*{min-width:0}
 .node-completion{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:15px;height:15px;border:1px solid #ddd5c9;border-radius:4px;font-size:12px}
+
+/* ===== 平台图标和横竖屏图标 ===== */
+.platform-icon,.format-icon{display:inline-block;vertical-align:middle;object-fit:contain;flex-shrink:0}
+.platform-icon{margin:0 2px}
+.format-icon{margin:0 1px;transition:transform 0.2s ease}
+.card-platforms,.editor-platforms{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+
 /* v1.9.11 新增样式 */
 .project-top-actions{display:flex;gap:8px;flex-wrap:wrap;padding-bottom:16px;border-bottom:1px solid #eee8df;margin-bottom:0}.project-top-actions .primary-action{background:#795a44;color:white;border-color:#795a44}.project-top-actions .primary-action:hover{background:#6a4f3a}
 .primary-action{background:#795a44;color:white;border-color:#795a44}.primary-action:hover{background:#6a4f3a}

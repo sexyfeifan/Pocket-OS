@@ -101,3 +101,29 @@
 .node-more{position:relative}.node-more-actions{position:absolute;top:100%;right:0;z-index:10;background:white;border:1px solid #e8e4dc;border-radius:8px;padding:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);min-width:200px;display:none}
 .node-more[open] .node-more-actions{display:flex;flex-direction:column;gap:4px}
 .node-more .editor-button{width:100%;text-align:left}
+
+/* ===== v1.9.21 表单排版优化 ===== */
+
+/* 统一按钮系统 */
+.btn-primary{background:#795a44;color:white;border:1px solid #795a44;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;transition:background 0.2s}
+.btn-primary:hover{background:#6a4f3a}
+.btn-secondary{background:white;color:#4a3c31;border:1px solid #e8e4dc;padding:10px 20px;border-radius:8px;font-size:13px;cursor:pointer;transition:all 0.2s}
+.btn-secondary:hover{background:#f3eee6;border-color:#d5d0c6}
+.btn-danger{background:white;color:#b34d3c;border:1px solid #fadbd8;padding:10px 20px;border-radius:8px;font-size:13px;cursor:pointer}
+.btn-danger:hover{background:#fdf2f2}
+
+/* 表单验证反馈 */
+.form-control:invalid{border-color:#df4d4d}
+.form-control:invalid:focus{box-shadow:0 0 0 2px rgba(223,77,77,0.1)}
+.form-error{font-size:11px;color:#df4d4d;margin-top:4px}
+.form-success{font-size:11px;color:#48734a;margin-top:4px}
+
+/* 统一选择器组件 */
+.format-option,.cooperation-option,.platform-btn{display:inline-flex;align-items:center;gap:4px;padding:6px 10px;border:1px solid #e8e4dc;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.2s;user-select:none}
+.format-option:hover,.cooperation-option:hover,.platform-btn:hover{background:#f3eee6}
+.format-option:has(input:checked),.cooperation-option:has(input:checked),.platform-btn[aria-pressed="true"]{background:#b37d56;color:white;border-color:#b37d56}
+.format-option input,.cooperation-option input{display:none}
+
+/* 响应式表单栅格 */
+.editor-field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px}
+@media(max-width:768px){.editor-field-grid{grid-template-columns:1fr}}
